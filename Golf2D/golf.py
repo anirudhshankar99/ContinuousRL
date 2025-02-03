@@ -16,7 +16,7 @@ from environment import GolfEnv
 env = GolfEnv()
 model = PPO("MlpPolicy", env, verbose=1, n_steps = 256, device='cpu')
 print('Learning...')
-model.learn(total_timesteps=100000)
+model.learn(total_timesteps=1000000)
 
 input_choice = 0
 while int(input_choice) == 0:
@@ -25,7 +25,7 @@ while int(input_choice) == 0:
         if int(input_choice) != 0: break
     except: break
     print('Testing...')
-    obs = env.reset(start=True)
+    obs = env.reset(start=False)
     done = False
     steps = 0
     while not done:
