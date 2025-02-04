@@ -43,7 +43,7 @@ class GolfEnv(gym.Env):
         self.ball_shape.elasticity = COLLISION_ELASTICITY
         self.ball_shape.collision_type = DYNAMIC_COLLISION_TYPE
         self.space.add(self.ball_body, self.ball_shape)
-        self.space.damping = 1 - FRICTION_COEFF
+        # self.space.damping = 1 - FRICTION_COEFF
 
         # Goal (hole)
         self.goal_radius = HOLE_RADIUS
@@ -152,11 +152,12 @@ class GolfEnv(gym.Env):
 
                 pygame.display.update()
                 self.clock.tick(FPS)
-            # self.ball_body.velocity *= (1 - FRICTION_COEFF)
+            self.ball_body.velocity *= (1 - FRICTION_COEFF)
             ball_pos = np.array(self.ball_body.position)
             distance_to_hole = np.linalg.norm(ball_pos - self.hole_body.position.int_tuple)
             if distance_to_hole < self.goal_radius:  # Ball in hole
-                reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)
+                reward = (self.prev_dist - distance_to_hole)#/(self.attempts+1)
+                # reward = 0
                 reward += 10000/(self.attempts+1)
                 obs = np.concatenate([ball_pos, ball_pos-np.array(self.hole_body.position)])
                 return obs, reward, True, {}
@@ -171,7 +172,8 @@ class GolfEnv(gym.Env):
         # if self.attempts < STEPS_CUTOFF:
         #     reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)  # Encourage getting closer # also add time later maybe
         # else: reward = -np.linalg.norm(BALL_START-self.hole_body.position)*(self.attempts+1)/STEPS_CUTOFF
-        reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)  # Encourage getting closer # also add time later maybe
+        reward = (self.prev_dist - distance_to_hole)#/(self.attempts+1)  # Encourage getting closer # also add time later maybe
+        # reward = (-distance_to_hole)#*(self.attempts+1)
         self.prev_dist = distance_to_hole
 
         # Observation: Ball (x, y), velocity (vx, vy), distance to hole
