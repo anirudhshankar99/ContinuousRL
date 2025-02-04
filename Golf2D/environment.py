@@ -12,12 +12,13 @@ DISP_W, DISP_H = 600, 600
 BALL_VELOCITY_CUTOFF = 50
 MAX_ATTEMPTS = 30
 FORCE_SCALING = [100, 500]
-COLLISION_ELASTICITY = 1
+COLLISION_ELASTICITY = 0.9
 FRICTION_COEFF = 0.05
 STATIC_COLLISION_TYPE = 1
 DYNAMIC_COLLISION_TYPE = 2
 HOLE_RADIUS = 20
 WALL_THICKNESS = 10
+STEPS_CUTOFF = 15
 
 class GolfEnv(gym.Env):
     def __init__(self):
@@ -53,17 +54,17 @@ class GolfEnv(gym.Env):
         self.space.add(self.hole_body, self.hole_shape)
 
         # Ground (boundary)
-        self.wall_positions = [[(DISP_W/3,0), (DISP_W/3, 2*DISP_H/3)], 
-                               [(DISP_W/3*2,DISP_H), (DISP_W/3*2, DISP_H/3)], 
-                               [(0,0), (0, DISP_H)], 
-                               [(DISP_W,0), (DISP_W, DISP_H)], 
-                               [(0,DISP_H), (DISP_W, DISP_H)], 
-                               [(0,0), (DISP_W, 0)]]
-
-        # self.wall_positions = [[(0,0), (0, DISP_H)], 
+        # self.wall_positions = [[(DISP_W/3,0), (DISP_W/3, 2*DISP_H/3)], 
+        #                        [(DISP_W/3*2,DISP_H), (DISP_W/3*2, DISP_H/3)], 
+        #                        [(0,0), (0, DISP_H)], 
         #                        [(DISP_W,0), (DISP_W, DISP_H)], 
         #                        [(0,DISP_H), (DISP_W, DISP_H)], 
         #                        [(0,0), (DISP_W, 0)]]
+
+        self.wall_positions = [[(0,0), (0, DISP_H)], 
+                               [(DISP_W,0), (DISP_W, DISP_H)], 
+                               [(0,DISP_H), (DISP_W, DISP_H)], 
+                               [(0,0), (DISP_W, 0)]]
 
         self.wall_bodies = []
         self.wall_shapes = []
@@ -75,8 +76,11 @@ class GolfEnv(gym.Env):
             self.wall_shapes[-1].collision_type = DYNAMIC_COLLISION_TYPE
             self.space.add(self.wall_bodies[-1], self.wall_shapes[-1])
 
-        handler = self.space.add_collision_handler(STATIC_COLLISION_TYPE, DYNAMIC_COLLISION_TYPE)
-        handler.begin = lambda arbiter, space, data: False
+        handler_static = self.space.add_collision_handler(STATIC_COLLISION_TYPE, DYNAMIC_COLLISION_TYPE)
+        handler_static.begin = lambda arbiter, space, data: False
+
+        handler_dynamic = self.space.add_collision_handler(DYNAMIC_COLLISION_TYPE, DYNAMIC_COLLISION_TYPE)
+        handler_dynamic.begin = lambda arbiter, space, data: True
 
         # Action space: [angle (0 to 360 degrees), force (0 to 500)]
         self.action_space = spaces.Box(low=np.array([-1, 0]), high=np.array([1, 1]), dtype=np.float32)
@@ -125,9 +129,15 @@ class GolfEnv(gym.Env):
         # till it comes to a halt 
         # for _ in range(10):  # Simulate small time steps
         #     self.space.step(1 / FPS)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
         for _ in range(int(np.ceil(np.log(BALL_VELOCITY_CUTOFF/np.linalg.norm(self.ball_body.velocity))/np.log(1-FRICTION_COEFF)))):
         # while np.linalg.norm(self.ball_body.velocity) > BALL_VELOCITY_CUTOFF:
             if visualize:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
                 self.display.fill((255, 255, 255))
                 ball_position = self.ball_body.position.int_tuple
                 x, y = self.convert_position(ball_position)
@@ -146,8 +156,8 @@ class GolfEnv(gym.Env):
             ball_pos = np.array(self.ball_body.position)
             distance_to_hole = np.linalg.norm(ball_pos - self.hole_body.position.int_tuple)
             if distance_to_hole < self.goal_radius:  # Ball in hole
-                reward = (self.prev_dist - distance_to_hole)*10/(self.attempts+1)
-                reward += 500
+                reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)
+                reward += 10000/(self.attempts+1)
                 obs = np.concatenate([ball_pos, ball_pos-np.array(self.hole_body.position)])
                 return obs, reward, True, {}
             self.space.step(1/FPS)
@@ -158,7 +168,10 @@ class GolfEnv(gym.Env):
         distance_to_hole = np.linalg.norm(ball_pos - self.hole_body.position.int_tuple)
 
         # Reward function
-        reward = (self.prev_dist - distance_to_hole)*10/(self.attempts+1)  # Encourage getting closer # also add time later maybe
+        # if self.attempts < STEPS_CUTOFF:
+        #     reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)  # Encourage getting closer # also add time later maybe
+        # else: reward = -np.linalg.norm(BALL_START-self.hole_body.position)*(self.attempts+1)/STEPS_CUTOFF
+        reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)  # Encourage getting closer # also add time later maybe
         self.prev_dist = distance_to_hole
 
         # Observation: Ball (x, y), velocity (vx, vy), distance to hole
@@ -168,10 +181,10 @@ class GolfEnv(gym.Env):
         #     return obs, reward, True, {}
         return obs, reward, False, {}
 
-    def reset(self, start=False):
+    def reset(self, start=True):
         """ Reset the environment """
         if start: self.ball_body.position = BALL_START
-        else: self.ball_body.position = list(np.random.rand(2,))
+        else: self.ball_body.position = list(np.random.rand(2,)*np.array([DISP_W, DISP_H]))
         self.ball_body.velocity = (0, 0)
         # self.space.step(1 / FPS)  # Advance physics a bit
         # distance_to_hole = np.linalg.norm(np.array(self.ball_body.position) - self.hole_body.position.int_tuple)
