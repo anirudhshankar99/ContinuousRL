@@ -1,9 +1,9 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import pymunk
 import pymunk.pygame_util
 import pygame
-from gym import spaces
+from gymnasium import spaces
 
 BALL_START = 50, 50
 GOAL_START = 500, 500
@@ -158,7 +158,7 @@ class GolfEnv(gym.Env):
         # distance_to_hole = np.linalg.norm(np.array(self.ball_body.position) - self.hole_body.position.int_tuple)
         self.attempts = 0
         self.prev_dist = np.linalg.norm(np.array(self.ball_body.position) - self.hole_body.position.int_tuple)
-        return np.array([*self.ball_body.position, *(np.array(self.ball_body.position)-np.array(self.hole_body.position)).tolist()]), {}
+        return np.array([*self.ball_body.position, *(np.array(self.ball_body.position)-np.array(self.hole_body.position)).tolist()])
 
     def close(self):
         pygame.quit()
@@ -167,4 +167,4 @@ class GolfEnv(gym.Env):
         return position[0], DISP_H - position[1]
     
     def force_scaling(self, force):
-        return (force + FORCE_SCALING[0]/(FORCE_SCALING[1]-FORCE_SCALING[0]))*(FORCE_SCALING[1]-FORCE_SCALING[0])
+        return (force + 0.5 + FORCE_SCALING[0]/(FORCE_SCALING[1]-FORCE_SCALING[0]))*(FORCE_SCALING[1]-FORCE_SCALING[0])

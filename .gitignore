@@ -1,2 +1,8 @@
-__pycache__
-.env
+Golf2D/__pycache__/
+Golf2D/Thoughts.txt
+Golf2D/weights/
+.env/
+__pycache__/
+runs/
+.gitignore
+plot.png

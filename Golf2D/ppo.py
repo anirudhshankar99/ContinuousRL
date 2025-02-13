@@ -1,225 +1,305 @@
-import torch
-import gym
+import argparse
+import os
+import random
 import time
+from distutils.util import strtobool
+
+import gymnasium as gym
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions.categorical import Categorical
+from torch.utils.tensorboard import SummaryWriter
 
-class FeedForward(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim):
-        super(FeedForward, self).__init__()
-        self.seq = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, hidden_dim),
-            torch.nn.ReLU(inplace=True),
-            torch.nn.Linear(hidden_dim, output_dim),
-            torch.nn.Sigmoid()
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    nn.init.orthogonal_(layer.weight, std)
+    nn.init.constant_(layer.bias, bias_const)
+    return layer
+
+class Agent(nn.Module):
+    def __init__(self, envs):
+        super(Agent, self).__init__()
+        self.critic = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 1), std=1.),
         )
-    def forward(self, x):
-        return self.seq(x)
+        self.actor = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+        )
+
+    def get_value(self, x):
+        return self.critic(x)
     
-class PPO(torch.nn.Module):
-    def __init__(self, env, hyperparameters:dict):
-        super(PPO, self).__init__()
-        assert(type(env.observation_space) == gym.spaces.Box)
-        assert(type(env.action_space) == gym.spaces.Box)
-        self._init_hyperparameters(hyperparameters)
+    def get_action_and_value(self, x, action=None):
+        logits = self.actor(x)
+        probs = Categorical(logits=logits)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
 
-        self.env = env
-        self.state_dim = env.observation_space.shape[0]
-        self.action_dim = env.action_space.shape[0]
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exp_name', type=str, default=os.path.basename(__file__).rstrip(".py"),
+                        help='the name of this experiment')
+    parser.add_argument('--gym-id', type=str, default='CartPole-v1',
+                        help='the id of the gym environment')
+    parser.add_argument('--learning-rate', type=float, default=2.5e-4,
+                        help='the LR of the optimizer(s)')
+    parser.add_argument('--seed', type=int, default=1,
+                        help='the seed of the experiment')
+    parser.add_argument('--total-timesteps', type=int, default=2.5e4,
+                        help='total timesteps of the experiment')
+    parser.add_argument('--torch-deterministic', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
+                        help='if False, `torch.backends.cudnn.deterministic=False`')
+    parser.add_argument('--cuda', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
+                        help='if False, cuda will not be enabled when possible')
+    parser.add_argument('--track', type=lambda x:bool(strtobool(x)), default=False, nargs='?', const=True,
+                        help='if True, the experiment will be tracked with Weights and Biases')
+    parser.add_argument('--wandb-project-name', type=str, default="cleanRL",
+                        help='the wandb project name')
+    parser.add_argument('--wandb-entity', type=str, default=None,
+                        help='the entity of the wandb project')
+    parser.add_argument('--capture-video', type=lambda x:bool(strtobool(x)), default=False, nargs='?', const=True,
+                        help='if True, records videos of the agent\'s performance')
+    
+    # Performance altering
+    parser.add_argument('--num-envs', type=int, default=4,
+                        help='number of parallel environments trained in')
+    parser.add_argument('--num-steps', type=int, default=128,
+                        help='number of steps per environment per rollout')
+    parser.add_argument('--anneal-lr', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
+                        help='if False, LR is not annealed')
+    parser.add_argument('--gae', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
+                        help='if False, gae will not be computed')
+    parser.add_argument('--gamma', type=float, default=0.99,
+                        help='the value of the discount factor gamma')
+    parser.add_argument('--gae-lambda', type=float, default=0.95,
+                        help='the value of the lambda parameter for gae')
+    parser.add_argument('--num-minibatches', type=int, default=4,
+                        help='the number of mini-batches')
+    parser.add_argument('--update-epochs', type=int, default=4,
+                        help='number of iterations of policy updates')
+    parser.add_argument('--norm-adv', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
+                        help='if False, doesn\'t perform advantage normalization')
+    parser.add_argument('--clip-coef', type=float, default=0.2,
+                        help='the surrogate ratios\' clipping coefficient')
+    parser.add_argument('--clip-vloss', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
+                        help='if False, doesn\'t perform value loss clipping')
+    parser.add_argument('--ent-coef', type=float, default=0.01,
+                        help='the value of the entropy coefficient')
+    parser.add_argument('--vf-coef', type=float, default=0.5,
+                        help='the coefficient of the value function in the agent\'s loss')
+    parser.add_argument('--max-grad-norm', type=float, default=0.5,
+                        help='the maximum norm for gradient clipping')
+    parser.add_argument('--target-kl', type=float, default=None,
+                        help='if and the threshold kl-d value with which early stopping must be evaluated')
+    args = parser.parse_args()
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    return args
 
-        self.actor = FeedForward(self.state_dim, self.action_dim, self.hidden_dim)
-        self.actor_log_std = torch.nn.Parameter(torch.eye(self.action_dim, self.action_dim)*0.5)
-        self.critic = FeedForward(self.state_dim, 1, self.hidden_dim)
+if __name__ == '__main__':
+    args = parse_args()
+    run_name = f'{args.gym_id}__{args.exp_name}__{args.seed}__{int(time.time())}'
+    if args.track:
+        import wandb
 
-        self.actor_optim = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
-        self.critic_optim = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
+    writer = SummaryWriter(f'runs/{run_name}')
+    writer.add_text(
+        'hyperparameters',
+        '|param|value|\n|-|-|\n%s'%('\n'.join([f'|{key}|{value}' for key, value in vars(args).items()])),
+    )
 
-        # This logger will help us with printing out summaries of each iteration
-        self.logger = {
-            'delta_t': time.time_ns(),
-            'timesteps': 0,          # timesteps so far
-            'iterations': 0,          # iterations so far
-            'epoch_lengths': [],       # episodic lengths in batch
-            'epoch_rewards': [],       # episodic returns in batch
-            'actor_losses': [],     # losses of actor network in current iteration
-        }
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    def learn(self, total_timesteps:int):
-        timesteps = 0
-        iterations = 0
-        while timesteps < total_timesteps:
-            epoch_observations, epoch_actions, epoch_log_probs, epoch_rewards_to_go, epoch_lengths = self.rollout()
-            timesteps += np.sum(epoch_lengths)
-            iterations += 1
+    device = torch.device('cuda' if torch.cuda.is_available and args.cuda else 'cpu')
 
-            self.logger['timesteps'] = timesteps
-            self.logger['iterations'] = iterations
+    def make_env(gym_id, seed, idx, capture_video, run_name):
+        def thunk():
+            if gym_id != 'Golf2D':
+                env = gym.make(gym_id)
+            else:
+                from environment import GolfEnv
+                env = GolfEnv()
+            env = gym.wrappers.RecordEpisodeStatistics(env)
+            if capture_video:
+                if idx == 0:
+                    env = gym.wrappers.RecordVideo(env, f'videos/{run_name}', record_video_trigger=lambda t: t%1000 == 0)
+            env.action_space.seed(seed)
+            env.observation_space.seed(seed)
+            return env
+        return thunk
 
-            V, _ = self.evaluate(epoch_observations, epoch_actions)
-            A_k = epoch_rewards_to_go - V.detach()
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(args.gym_id, args.seed + i, i, args.capture_video, run_name)
+        for i in range(args.num_envs)])
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "must be a discrete action space"
 
-            # A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
+    agent = Agent(envs).to(device)
+    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
-            for _ in range(self.n_updates_per_iteration):
-                V, current_log_probs = self.evaluate(epoch_observations, epoch_actions)
-                ratio = torch.exp(current_log_probs - epoch_log_probs)
+    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    values = torch.zeros((args.num_steps, args.num_envs)).to(device)
 
-                min_ratio = torch.min(ratio, torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon))*A_k
-                actor_loss = -torch.mean(min_ratio)
-                critic_loss = torch.nn.functional.mse_loss(V, epoch_rewards_to_go)
+    global_step = 0
+    start_time = time.time()
+    next_obs = torch.Tensor(envs.reset()[0]).to(device)
+    next_done = torch.zeros(args.num_envs).to(device)
+    num_updates = args.total_timesteps // args.batch_size
 
-                self.actor_optim.zero_grad()
-                actor_loss.backward(retain_graph=True)
-                self.actor_optim.step()
+    # for update in range(1, int(num_updates + 1)): #change to while less than total updates (?)
+    update = 0
+    while global_step < args.total_timesteps:
+        update += 1
+        if args.anneal_lr:
+            frac = 1.0 - (update - 1.0) / num_updates
+            lrnow = frac * args.learning_rate
+            optimizer.param_groups[0]['lr'] = lrnow
 
-                self.critic_optim.zero_grad()
-                critic_loss.backward()
-                self.critic_optim.step()
+        for step in range(0, args.num_steps):
+            global_step += 1 * args.num_envs
+            obs[step] = next_obs
+            dones[step] = next_done
 
-                self.logger['actor_losses'].append(actor_loss.detach().numpy())
+            with torch.no_grad():
+                action, logprob, _, value = agent.get_action_and_value(next_obs)
+                values[step] = value.flatten()
+            actions[step] = action
+            logprobs[step] = logprob
+
+            next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
+            rewards[step] = torch.tensor(reward).to(device).view(-1)
+            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
+
+            if 'episode' in info.keys():
+                print(f'global_step = {global_step}, episodic_return={info["episode"]["r"][info["episode"]["r"]>0][0]}')
+                writer.add_scalar('charts/episodic_return', info["episode"]["r"][info["episode"]["r"]>0][0], global_step)
+                writer.add_scalar('charts/episodic_length', info["episode"]["l"][info["episode"]["l"]>0][0], global_step)
+                break
+
+        with torch.no_grad():
+            next_value = agent.get_value(next_obs).reshape(1, -1)
+            if args.gae:
+                advantages = torch.zeros_like(rewards).to(device)
+                lastgaelam = 0
+                for t in reversed(range(args.num_steps)):
+                    if t == args.num_steps - 1:
+                        nextnonterminal = 1.0 - next_done
+                        nextvalues = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        nextvalues = values[t + 1]
+                    delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
+                    advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                returns = advantages + values
+            else:
+                returns = torch.zeros_like(rewards).to(device)
+                for t in reversed(range(args.num_steps)):
+                    if t == args.num_steps - 1:
+                        nextnonterminal = 1.0 - next_done
+                        next_return = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        next_return = returns[t + 1]
+                    returns[t] = rewards[t] + args.gamma * nextnonterminal * next_return
+                advantages = returns - values
+
+        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_logprobs = logprobs.reshape(-1)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_advantages = advantages.reshape(-1)
+        b_returns = returns.reshape(-1)
+        b_values = values.reshape(-1)
+        
+        b_inds = np.arange(args.batch_size)
+        clipfracs = []
+        for epoch in range(args.update_epochs):
+            np.random.shuffle(b_inds)
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
+                mb_inds = b_inds[start:end]
+
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(
+                    b_obs[mb_inds], b_actions.long()[mb_inds]
+                )
+                logratio = newlogprob - b_logprobs[mb_inds]
+                ratio = logratio.exp()
+
+                with torch.no_grad():
+                    old_approx_kl = (-logratio).mean()
+                    approx_kl = ((ratio - 1) - logratio).mean()
+                    clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
+
+                mb_advantages = b_advantages[mb_inds]
+                if args.norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean())/(mb_advantages.std() + 1e-8)
+
+                pg_loss1 = -mb_advantages * ratio
+                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+                newvalue = newvalue.view(-1)
+                if args.clip_vloss:
+                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+                    v_clipped = b_values[mb_inds] + torch.clamp(
+                        newvalue - b_values[mb_inds],
+                        -args.clip_coef,
+                        args.clip_coef
+                    )
+                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
+                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+                    v_loss = 0.5 * v_loss_max.mean()
+                else: v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+
+                entropy_loss = entropy.mean()
+                loss = pg_loss - args.ent_coef * entropy_loss + args.vf_coef * v_loss
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                optimizer.step()
             
-            self._log_summary()
-            if iterations % self.save_freq == 0:
-                torch.save(self.actor.state_dict(), './Golf2D/weights/actor.pth')
-                torch.save(self.actor.state_dict(), './Golf2D/weights/critic.pth')
+            if args.target_kl is not None:
+                if approx_kl > args.target_kl:
+                    break
         
-    def rollout(self):
-        epoch_observations = []
-        epoch_actions = []
-        epoch_log_probs = []
-        epoch_rewards_to_go = []
-        epoch_rewards = []
-        epoch_lengths = []
+        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+        var_y = np.var(y_true)
+        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        episode_rewards = []
-        timesteps = 0
+        writer.add_scalar('charts/learning_rate', optimizer.param_groups[0]['lr'], global_step)
+        writer.add_scalar('losses/value_loss', v_loss.item(), global_step)
+        writer.add_scalar('losses/policy_loss', pg_loss.item(), global_step)
+        writer.add_scalar('losses/entropy', entropy_loss.item(), global_step)
+        writer.add_scalar('losses/approx_kl', approx_kl.item(), global_step)
+        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+        writer.add_scalar('losses/explained_variance', explained_var, global_step)
+        # print("SPS:", int(global_step / (time.time() - start_time)))
+        writer.add_scalar('charts/SPS', int(global_step/ (time.time() - start_time)), global_step)
 
-        while timesteps < self.timesteps_per_batch:
-            episode_rewards = []
-
-            observations, _ = self.env.reset()
-            observations = torch.tensor(observations, dtype=torch.float32)
-            done = False
-
-            for episode_timestep in range(self.max_timesteps_per_episode):
-                # if self.render ->
-                epoch_observations.append(observations)
-                action, log_prob = self.get_action(observations)
-                observations, rewards, terminated, truncated, _ = self.env.step(action)
-                observations = torch.tensor(observations, dtype=torch.float32)
-
-                done = terminated | truncated
-
-                episode_rewards.append(rewards)
-                epoch_actions.append(torch.tensor(action, dtype=torch.float32))
-                epoch_log_probs.append(log_prob)
-
-                timesteps += 1
-                if done: break
-                
-            epoch_lengths.append(episode_timestep + 1)
-            epoch_rewards.append(episode_rewards)
-
-        epoch_observations = torch.stack(epoch_observations, dim=0)
-        epoch_actions = torch.stack(epoch_actions, dim=0)
-        epoch_log_probs = torch.stack(epoch_log_probs, dim=0)
-        epoch_rewards_to_go = self.compute_rewards_to_go(epoch_rewards)
-
-        self.logger['epoch_rewards'] = epoch_rewards
-        self.logger['epoch_lengths'] = epoch_lengths
-                
-        return epoch_observations, epoch_actions, epoch_log_probs, epoch_rewards_to_go, epoch_lengths
-    
-    def compute_rewards_to_go(self, epoch_rewards):
-        epoch_rewards_to_go = []
-
-        for episode_rewards in reversed(epoch_rewards):
-            discounted_reward = 0
-
-            for reward in reversed(episode_rewards):
-                discounted_reward = reward + discounted_reward * self.gamma
-                epoch_rewards_to_go.insert(0, discounted_reward)
-        
-        epoch_rewards_to_go = torch.tensor(epoch_rewards_to_go, dtype=torch.float32)
-        return epoch_rewards_to_go
-
-    def get_action(self, observations):
-        mean_action = self.actor(observations)
-        cov_mat = self.actor_log_std
-        dist = torch.distributions.MultivariateNormal(mean_action, cov_mat)
-        action = dist.sample()
-        log_prob = dist.log_prob(action)
-        return action.detach().numpy(), log_prob.detach()
-
-    def evaluate(self, epoch_observations, epoch_actions):
-        V = self.critic(epoch_observations).squeeze(dim=-1)
-        mean_action = self.actor(epoch_observations)
-        dist = torch.distributions.MultivariateNormal(mean_action, self.actor_log_std)
-        log_probs = dist.log_prob(epoch_actions)
-        return V, log_probs
-
-    def _init_hyperparameters(self, hyperparameters):
-        self.timesteps_per_batch = 4800
-        self.max_timesteps_per_episode = 1600
-        self.n_updates_per_iteration = 5
-        self.lr = 5e-4
-        self.gamma = 0.99
-        self.epsilon = 0.2
-        self.hidden_dim = 64
-
-        self.render = True
-        self.seed = None
-        self.save_freq = 10
-
-        for param, val in hyperparameters.items():
-            exec('self.' + param + ' = ' + str(val))
-
-        if self.seed != None:
-            assert(type(self.seed) == int)
-
-            torch.manual_seed(self.seed)
-            print(f"Seed set to {self.seed}")
-
-    def _log_summary(self):
-        """
-            Print to stdout what we've logged so far in the most recent batch.
-
-            Parameters:
-                None
-
-            Return:
-                None
-        """
-        # Calculate logging values. I use a few python shortcuts to calculate each value
-        # without explaining since it's not too important to PPO; feel free to look it over,
-        # and if you have any questions you can email me (look at bottom of README)
-        delta_t = self.logger['delta_t']
-        self.logger['delta_t'] = time.time_ns()
-        delta_t = (self.logger['delta_t'] - delta_t) / 1e9
-        delta_t = str(round(delta_t, 2))
-
-        timesteps = self.logger['timesteps']
-        iterations = self.logger['iterations']
-        avg_ep_lens = np.mean(self.logger['epoch_lengths'])
-        avg_ep_rews = np.mean([np.sum(ep_rews) for ep_rews in self.logger['epoch_rewards']])
-        avg_actor_loss = np.mean([losses.mean() for losses in self.logger['actor_losses']])
-
-        # Round decimal places for more aesthetic logging messages
-        avg_ep_lens = str(round(avg_ep_lens, 2))
-        avg_ep_rews = str(round(avg_ep_rews, 2))
-        avg_actor_loss = str(round(avg_actor_loss, 5))
-
-        # Print logging statements
-        print(flush=True)
-        print(f"-------------------- Iteration #{iterations} --------------------", flush=True)
-        print(f"Average Episodic Length: {avg_ep_lens}", flush=True)
-        print(f"Average Episodic Return: {avg_ep_rews}", flush=True)
-        print(f"Average Loss: {avg_actor_loss}", flush=True)
-        print(f"Timesteps So Far: {timesteps}", flush=True)
-        print(f"Iteration took: {delta_t} secs", flush=True)
-        print(f"------------------------------------------------------", flush=True)
-        print(flush=True)
-
-        # Reset batch-specific logging data
-        self.logger['batch_lens'] = []
-        self.logger['batch_rews'] = []
-        self.logger['actor_losses'] = []
+    envs.close()
+    writer.close()
