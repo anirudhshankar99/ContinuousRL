@@ -1,2 +1,6 @@
-__pycache__
-.env
+Golf2D/__pycache__/
+.env/
+__pycache__/
+runs/
+Golf2D/weights
+plot.png

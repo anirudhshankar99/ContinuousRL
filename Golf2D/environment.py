@@ -1,9 +1,9 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import pymunk
 import pymunk.pygame_util
 import pygame
-from gym import spaces
+from gymnasium import spaces
 
 BALL_START = 50, 50
 GOAL_START = 500, 500
@@ -11,7 +11,7 @@ FPS = 50
 DISP_W, DISP_H = 600, 600
 BALL_VELOCITY_CUTOFF = 50
 MAX_ATTEMPTS = 30
-FORCE_SCALING = [100, 500]
+FORCE_SCALING = [20, 500]
 COLLISION_ELASTICITY = 0.9
 FRICTION_COEFF = 0.05
 STATIC_COLLISION_TYPE = 1
@@ -19,6 +19,7 @@ DYNAMIC_COLLISION_TYPE = 2
 HOLE_RADIUS = 20
 WALL_THICKNESS = 10
 STEPS_CUTOFF = 15
+MAX_REWARD = 10000
 
 class GolfEnv(gym.Env):
     def __init__(self):
@@ -28,7 +29,6 @@ class GolfEnv(gym.Env):
         pygame.init()
         self.clock = pygame.time.Clock()
         self.display = pygame.display.set_mode((DISP_W, DISP_H))
-        # self.draw_options = pymunk.pygame_util.DrawOptions(self.screen) # Not sure what this does
 
         # Pymunk physics setup
         self.space = pymunk.Space()
@@ -54,12 +54,12 @@ class GolfEnv(gym.Env):
         self.space.add(self.hole_body, self.hole_shape)
 
         # Ground (boundary)
-        # self.wall_positions = [[(DISP_W/3,0), (DISP_W/3, 2*DISP_H/3)], 
-        #                        [(DISP_W/3*2,DISP_H), (DISP_W/3*2, DISP_H/3)], 
-        #                        [(0,0), (0, DISP_H)], 
-        #                        [(DISP_W,0), (DISP_W, DISP_H)], 
-        #                        [(0,DISP_H), (DISP_W, DISP_H)], 
-        #                        [(0,0), (DISP_W, 0)]]
+        self.wall_positions = [[(DISP_W/3,0), (DISP_W/3, 2*DISP_H/3)], 
+                               [(DISP_W/3*2,DISP_H), (DISP_W/3*2, DISP_H/3)], 
+                               [(0,0), (0, DISP_H)], 
+                               [(DISP_W,0), (DISP_W, DISP_H)], 
+                               [(0,DISP_H), (DISP_W, DISP_H)], 
+                               [(0,0), (DISP_W, 0)]]
 
         self.wall_positions = [[(0,0), (0, DISP_H)], 
                                [(DISP_W,0), (DISP_W, DISP_H)], 
@@ -95,30 +95,6 @@ class GolfEnv(gym.Env):
         self.attempts = 0
         self.prev_dist = np.linalg.norm(np.array(self.ball_body.position) - self.hole_body.position.int_tuple)
 
-    def game(self):
-        # try:
-            while True:
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        return
-                    
-                self.display.fill((255, 255, 255))
-                ball_position = self.ball_body.position.int_tuple
-                x, y = self.convert_position(ball_position)
-                pygame.draw.circle(self.display, (255, 0, 0), (int(x), int(y)), self.ball_radius)
-
-                hole_position = self.hole_body.position.int_tuple
-                x, y = self.convert_position(hole_position)
-                pygame.draw.circle(self.display, (0, 0, 0), (int(x), int(y)), self.goal_radius)
-
-                for position_pair in self.wall_positions:
-                    pygame.draw.line(self.display, (0, 0, 0), self.convert_position(position_pair[0]), self.convert_position(position_pair[1]), 5) # 50 + 5/2 as pymunk draws segment width above, and mygame draws around
-
-                pygame.display.update()    
-                self.clock.tick(FPS)
-                self.space.step(1/FPS)
-        # except: return
-
     def step(self, action, visualize = False):
         """ Apply action: hit the ball with given angle and force """
         angle, force = action[0]*np.pi, self.force_scaling(action[1])
@@ -127,13 +103,10 @@ class GolfEnv(gym.Env):
 
         # Step physics
         # till it comes to a halt 
-        # for _ in range(10):  # Simulate small time steps
-        #     self.space.step(1 / FPS)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
         for _ in range(int(np.ceil(np.log(BALL_VELOCITY_CUTOFF/np.linalg.norm(self.ball_body.velocity))/np.log(1-FRICTION_COEFF)))):
-        # while np.linalg.norm(self.ball_body.velocity) > BALL_VELOCITY_CUTOFF:
             if visualize:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
@@ -156,11 +129,10 @@ class GolfEnv(gym.Env):
             ball_pos = np.array(self.ball_body.position)
             distance_to_hole = np.linalg.norm(ball_pos - self.hole_body.position.int_tuple)
             if distance_to_hole < self.goal_radius:  # Ball in hole
-                reward = (self.prev_dist - distance_to_hole)#/(self.attempts+1)
-                # reward = 0
-                reward += 10000/(self.attempts+1)
+                reward = (self.prev_dist - distance_to_hole)/MAX_REWARD
+                reward += 1/(self.attempts+1)
                 obs = np.concatenate([ball_pos, ball_pos-np.array(self.hole_body.position)])
-                return obs, reward, True, {}
+                return obs, reward, True, False, {}
             self.space.step(1/FPS)
         self.ball_body.velocity = (0, 0)
 
@@ -169,19 +141,13 @@ class GolfEnv(gym.Env):
         distance_to_hole = np.linalg.norm(ball_pos - self.hole_body.position.int_tuple)
 
         # Reward function
-        # if self.attempts < STEPS_CUTOFF:
-        #     reward = (self.prev_dist - distance_to_hole)/(self.attempts+1)  # Encourage getting closer # also add time later maybe
-        # else: reward = -np.linalg.norm(BALL_START-self.hole_body.position)*(self.attempts+1)/STEPS_CUTOFF
-        reward = (self.prev_dist - distance_to_hole)#/(self.attempts+1)  # Encourage getting closer # also add time later maybe
-        # reward = (-distance_to_hole)#*(self.attempts+1)
+        reward = (self.prev_dist - distance_to_hole)/MAX_REWARD
         self.prev_dist = distance_to_hole
 
-        # Observation: Ball (x, y), velocity (vx, vy), distance to hole
+        # Observation: Ball (x, y), distance to hole
         obs = np.concatenate([ball_pos, ball_pos-np.array(self.hole_body.position)])
         self.attempts += 1
-        # if self.attempts >= MAX_ATTEMPTS:
-        #     return obs, reward, True, {}
-        return obs, reward, False, {}
+        return obs, reward, False, False, {}
 
     def reset(self, start=True):
         """ Reset the environment """
@@ -194,35 +160,6 @@ class GolfEnv(gym.Env):
         self.prev_dist = np.linalg.norm(np.array(self.ball_body.position) - self.hole_body.position.int_tuple)
         return np.array([*self.ball_body.position, *(np.array(self.ball_body.position)-np.array(self.hole_body.position)).tolist()])
 
-    def render(self, mode="human"):
-        """ Render the golf course """
-        # self.screen.fill((255, 255, 255))  # White background
-        # self.space.debug_draw(self.draw_options)
-        # pygame.draw.circle(self.screen, (0, 255, 0), self.hole_position.astype(int), self.goal_radius)
-        # pygame.display.flip()
-        # self.clock.tick(FPS)
-
-        # while True:
-        # for event in pygame.event.get():
-        #     if event.type == pygame.QUIT:
-        #         return
-            
-        self.display.fill((255, 255, 255))
-        ball_position = self.ball_body.position.int_tuple
-        x, y = self.convert_position(ball_position)
-        pygame.draw.circle(self.display, (255, 0, 0), (int(x), int(y)), self.ball_radius)
-
-        hole_position = self.hole_body.position.int_tuple
-        x, y = self.convert_position(hole_position)
-        pygame.draw.circle(self.display, (0, 0, 0), (int(x), int(y)), self.goal_radius)
-
-        for position_pair in self.wall_positions:
-            pygame.draw.line(self.display, (0, 0, 0), self.convert_position(position_pair[0]), self.convert_position(position_pair[1]), 5) # 50 + 5/2 as pymunk draws segment width above, and mygame draws around
-
-        pygame.display.update()    
-        self.clock.tick(FPS)
-        self.space.step(1/FPS)
-
     def close(self):
         pygame.quit()
 
@@ -230,4 +167,4 @@ class GolfEnv(gym.Env):
         return position[0], DISP_H - position[1]
     
     def force_scaling(self, force):
-        return (force + FORCE_SCALING[0]/(FORCE_SCALING[1]-FORCE_SCALING[0]))*(FORCE_SCALING[1]-FORCE_SCALING[0])
+        return (force + 0.5 + FORCE_SCALING[0]/(FORCE_SCALING[1]-FORCE_SCALING[0]))*(FORCE_SCALING[1]-FORCE_SCALING[0])

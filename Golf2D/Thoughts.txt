@@ -1,0 +1,2 @@
+-> Reward generating network -> Start w simple case of no obstacles and reach in a single step -> Multiple steps -> Walls -> etc.
+-> Tree search by instantiating several agents from a state for a set number of lookahead actions -> Pruning less favourable trajectories to prevent exponential explosion
