@@ -1,8 +1,6 @@
 Golf2D/__pycache__/
-Golf2D/Thoughts.txt
-Golf2D/weights/
 .env/
 __pycache__/
 runs/
-.gitignore
+Golf2D/weights
 plot.png
