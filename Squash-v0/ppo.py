@@ -136,11 +136,7 @@ if __name__ == '__main__':
 
     def make_env(gym_id, seed, idx, capture_video, run_name):
         def thunk():
-            if gym_id != 'Golf2D':
-                env = gym.make(gym_id)
-            else:
-                from environment import GolfEnv
-                env = GolfEnv()
+            env = gym.make(gym_id)
             env = gym.wrappers.RecordEpisodeStatistics(env)
             if capture_video:
                 if idx == 0:
