@@ -20,14 +20,13 @@ class SquashEnv(gym.Env):
             self.size_y = 1/self.size_y_to_x_ratio
             self.size_x = 1
         self.agent_speed = 0.4
-        self._ball_size = self.size_x / 10 # 20 balls can fill the width of the field
+        self._ball_size = self.size_x / 10 # 10 balls can fill the width of the field
         self._agent_size = self._ball_size # agent takes the same size
         self._wall_width = self._ball_size / 5 # 20% of the ball's size
         self.max_impulse = self.size_y # covers the length of the field in 1 second
         self.min_impulse = 0.25 * self.size_y # covers the length of the field in 4 seconds
         self._window_size_scaling = 800
         self._agent_colours = (np.stack(self._get_agent_colours(), axis=0)*255).astype(int)
-        self.initial_volley_reward_fraction = self.volley_reward_fraction
 
         # Observations: agent positions (x,y) x n_agents, ball(x,y), distance_to_ball (x,y), ball_velocity(v_r,v_theta), my_turn_in, agent_after_me, num_agents_remaining
         observation_low_positions = []
@@ -61,16 +60,16 @@ class SquashEnv(gym.Env):
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
-        self._agent_locations = np.stack([np.array([self.size_x / 2, self.size_y / 2], dtype=np.float64) for _ in range(self.num_agents)], dtype=np.float64, axis=0) # (2*n_agents,)
-        self._ball_location = np.array([self.size_x / 2, self.size_y / 2], dtype=np.float64)
+        # self._agent_locations = np.stack([np.array([self.size_x / 2, self.size_y / 2], dtype=np.float64) for _ in range(self.num_agents)], dtype=np.float64, axis=0) # (2*n_agents,)
+        self._agent_locations = np.stack([np.array([self._ball_size * 2, self._ball_size * 2]), np.array([self.size_x - self._ball_size * 2, self.size_y - self._ball_size * 2])], dtype=np.float64, axis=0)
+        # self._ball_location = np.array([self.size_x / 2, self.size_y / 2], dtype=np.float64)
+        self._ball_location = self._agent_locations[0]
         self._ball_velocity = np.array([0., 0.], dtype=np.float64)
         self._agent_turn = 0
         self._agent_turns = {i:i for i in range(self.num_agents)} # { agent: my_turn_in, ...}
-        self.reward, self.terminated = {'agent_%d'%i:0. for i in range(self.num_agents)}, {'agent_%d'%i:False for i in range(self.num_agents)}
-        self.reward['agent_0'] = -1*self.volley_reward_fraction
-        self.contacts = 0
-        self.struck = False # whether or not the player has struck the ball
-        if self.scaling_volley: self.volley_reward_fraction = self.initial_volley_reward_fraction
+        self.terminated = {'agent_%d'%i:False for i in range(self.num_agents)}
+        # self.contacts = 0
+        # self.struck = False # whether or not the player has struck the ball
 
         observation = self._get_obs()
         info = self._get_info() # to include number of volleys
@@ -87,6 +86,7 @@ class SquashEnv(gym.Env):
         Action is of the form { 'agent_x': (action_dim, ), ...}
         """
         processed_actions = self._process_actions(action)
+        reward = {'agent_%d'%i:0. for i in range(self.num_agents)}
         if self._ball_out_of_bounds():
             # eliminate player
             current_players = list(self._agent_turns.keys())
@@ -101,13 +101,11 @@ class SquashEnv(gym.Env):
             if len(current_players) == 1: 
                 self.terminated['agent_%d'%eliminator] = True
                 # self.reward['agent_%d'%eliminator] += 1 # an extra reward for being the last one standing
-                self.reward['agent_%d'%eliminated_agent] -= 1*self.volley_reward_fraction*0.5
+                # self.reward['agent_%d'%eliminated_agent] -= 1*self.volley_reward_fraction*0.5
                 # return dummy observations and all dones
-                return {'agent_%d'%i:torch.zeros(2 * self.num_agents + 7, device=self.device) for i in range(self.num_agents)}, self.reward, {'agent_%d'%i:True for i in range(self.num_agents)}, {'agent_%d'%i:False for i in range(self.num_agents)}, self._get_info()
+                return {'agent_%d'%i:torch.zeros(2 * self.num_agents + 7, device=self.device) for i in range(self.num_agents)}, reward, {'agent_%d'%i:True for i in range(self.num_agents)}, {'agent_%d'%i:False for i in range(self.num_agents)}, self._get_info()
 
-            for standing_agent in list(self._agent_turns.keys()):
-                if standing_agent == eliminator: self.reward['agent_%d'%standing_agent] += 1
-                else: self.reward['agent_%d'%standing_agent] += 1*self.surviving_reward_fraction
+            # for standing_agent in list(self._agent_turns.keys()):
 
             # turns for remaining players
             self._agent_turns = {
@@ -122,17 +120,18 @@ class SquashEnv(gym.Env):
 
         self._ball_velocity[1] = self._ball_rebound()
 
-        if self.struck == False:
-            for i in list(self._agent_turns.keys()):
-                # check for ball contact if in turn
-                if i == self._agent_turn:
-                    if self._euclidian_dist(self._agent_locations[i], self._ball_location) < self._ball_size:
-                        # contact
-                        if self.render_mode == 'logs': self._log_entry('[CONTACT] by agent %d. '%self._agent_turn)
-                        self.contacts += 1
-                        self._ball_velocity = self._2d_collision_elastic(self._ball_velocity, action['agent_%d'%i][-2:])
-                        self.reward['agent_%d'%self._agent_turn] += 1*self.volley_reward_fraction # rewards receiver
-                        self.struck = True
+        for i in list(self._agent_turns.keys()):
+            # check for ball contact if in turn
+            if i == self._agent_turn:
+                if self._euclidian_dist(self._agent_locations[i], self._ball_location) < self._ball_size:
+                    # contact
+                    if self.render_mode == 'logs': self._log_entry('[CONTACT] by agent %d. '%self._agent_turn)
+                    self._agent_turn = int(not self._agent_turn)
+                    # self.contacts += 1
+                    self._ball_velocity = self._2d_collision_elastic(self._ball_velocity, action['agent_%d'%i][-2:])
+                    for i in list(self._agent_turns.keys()):
+                        reward['agent_%d'%i] += 1*self.volley_reward_fraction # rewards receiver
+                # self.struck = True
 
         for i in list(self._agent_turns.keys()):
             # perform movement if agent is still alive
@@ -152,7 +151,7 @@ class SquashEnv(gym.Env):
         if self.render_mode == "human":
             self.render()
 
-        return observation, self.reward, self.terminated, {'agent_%d'%i:False for i in range(self.num_agents)}, info
+        return observation, reward, self.terminated, {'agent_%d'%i:False for i in range(self.num_agents)}, info
 
     def render(self):
         if self.display is None:
@@ -187,7 +186,7 @@ class SquashEnv(gym.Env):
         self.clock.tick(self.fps)
 
     def close(self):
-        if self.window is not None:
+        if self.display is not None:
             pygame.display.quit()
             pygame.quit()
 
@@ -200,7 +199,6 @@ class SquashEnv(gym.Env):
         self.surviving_reward_fraction = 0.25
         self.device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
         self.render_mode = 'none'
-        self.scaling_volley = False
 
         for param, val in hyperparameters.items():
             exec('self.' + param + ' = ' + '%s'%val)
@@ -222,6 +220,7 @@ class SquashEnv(gym.Env):
         return obs
 
     def _get_info(self):
+        return {}
         return {'contacts':self.contacts}
     
     def _process_actions(self, action):
@@ -234,28 +233,26 @@ class SquashEnv(gym.Env):
     
     def _ball_rebound(self):
         def _reflect(theta, phi): return 2 * phi - theta
-        left, right, up = self._ball_location[0] < self._ball_size, self._ball_location[0] > self.size_x - self._ball_size, self._ball_location[1] < self._ball_size
-        if up:
-            # change turn
-            self.reward['agent_%d'%self._agent_turn] += 1*self.volley_reward_fraction # rewards setter
-            self._agent_turn = list(self._agent_turns.keys())[list(self._agent_turns.values()).index(1)]
-            self.struck = False
-            if self.scaling_volley: self._increase_volley_reward()
-            for key in self._agent_turns.keys():
-                if self._agent_turns[key] > 0: 
-                    self._agent_turns[key] -= 1
-                else: self._agent_turns[key] = len(self._agent_turns) - 1
-            if left: 
-                if self.render_mode == 'logs': self._log_entry('[REBOUND] off the top-left. agent %d\'s turn now. '%list(self._agent_turns.keys())[list(self._agent_turns.values()).index(np.min(list(self._agent_turns.values())))])
-                return _reflect(_reflect(self._ball_velocity[1], 3 * np.pi / 2), 0)
-            elif right:
-                if self.render_mode == 'logs': self._log_entry('[REBOUND] off the top-right. agent %d\'s turn now. '%list(self._agent_turns.keys())[list(self._agent_turns.values()).index(np.min(list(self._agent_turns.values())))])
-                return _reflect(_reflect(self._ball_velocity[1], np.pi / 2), 0)
-            else: 
-                if self.render_mode == 'logs': self._log_entry('[REBOUND] off the top. agent %d\'s turn now. '%list(self._agent_turns.keys())[list(self._agent_turns.values()).index(np.min(list(self._agent_turns.values())))])
-                return _reflect(self._ball_velocity[1], np.pi)
-
-        elif left: 
+        left, right, up, down = self._ball_location[0] < self._ball_size, self._ball_location[0] > self.size_x - self._ball_size, self._ball_location[1] < self._ball_size, self._ball_location[1] > self.size_y - self._ball_size
+        # if up or down:
+        #     # change turn
+        #     # self.reward['agent_%d'%self._agent_turn] += 1*self.volley_reward_fraction # rewards setter
+        #     self._agent_turn = list(self._agent_turns.keys())[list(self._agent_turns.values()).index(1)]
+        #     self.struck = False
+        #     for key in self._agent_turns.keys():
+        #         if self._agent_turns[key] > 0: 
+        #             self._agent_turns[key] -= 1
+        #         else: self._agent_turns[key] = len(self._agent_turns) - 1
+        #     if left: 
+        #         if self.render_mode == 'logs': self._log_entry('[REBOUND] off the top-left. agent %d\'s turn now. '%list(self._agent_turns.keys())[list(self._agent_turns.values()).index(np.min(list(self._agent_turns.values())))])
+        #         return _reflect(_reflect(self._ball_velocity[1], 3 * np.pi / 2), 0)
+        #     elif right:
+        #         if self.render_mode == 'logs': self._log_entry('[REBOUND] off the top-right. agent %d\'s turn now. '%list(self._agent_turns.keys())[list(self._agent_turns.values()).index(np.min(list(self._agent_turns.values())))])
+        #         return _reflect(_reflect(self._ball_velocity[1], np.pi / 2), 0)
+        #     else: 
+        #         if self.render_mode == 'logs': self._log_entry('[REBOUND] off the top. agent %d\'s turn now. '%list(self._agent_turns.keys())[list(self._agent_turns.values()).index(np.min(list(self._agent_turns.values())))])
+        #         return _reflect(self._ball_velocity[1], np.pi)
+        if left: 
             if self.render_mode == 'logs': self._log_entry('[REBOUND] off the left wall. ')
             return _reflect(self._ball_velocity[1], 3 * np.pi / 2)
         elif right: 
@@ -264,7 +261,8 @@ class SquashEnv(gym.Env):
         return self._ball_velocity[1]
     
     def _ball_out_of_bounds(self):
-        return self._ball_location[1] > self.size_y - self._ball_size
+        up, down = self._ball_location[1] < self._ball_size, self._ball_location[1] > self.size_y - self._ball_size
+        return up or down
     
     def _2d_collision_elastic(self, initial_velocity, impulse):
         ball_velocity_x, ball_velocity_y = initial_velocity[0] * np.cos(initial_velocity[1]), initial_velocity[0] * np.sin(initial_velocity[1])
@@ -294,6 +292,3 @@ class SquashEnv(gym.Env):
         _log += ').'
         print(_log)
         self._logs.append(_log)
-
-    def _increase_volley_reward(self):
-        self.volley_reward_fraction += self.initial_volley_reward_fraction / 4

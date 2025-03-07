@@ -4,3 +4,5 @@ __pycache__/
 runs/
 Golf2D/weights
 plot.png
+
+supervised_projectile.ipynb
