@@ -23,23 +23,62 @@ def strtobool(x):
 def mish(input):
     return input * torch.tanh(F.softplus(input))
 
-class MLP(nn.Module):
-    def __init__(self, env):
+class DynamicsModel(torch.nn.Module):
+    def __init__(self, env, hidden_dim=64):
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(np.array(env.observation_space.shape).prod() + env.action_space.shape[0], 8),
-            nn.Tanh(),
-            nn.Linear(8, 8),
-            nn.Tanh(),
-            nn.Linear(8, np.array(env.observation_space.shape).prod())
+        input_dim = env.observation_space.shape[0] + env.action_space.shape[0]
+        output_dim = env.observation_space.shape[0]
+        self.model = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dim, output_dim * 2)
         )
+        self.output_dim = output_dim
         self.trajectories = []
+        self.rtgs = []
+        self.stds = []
+        self.confidence_network = torch.nn.Sequential(
+            torch.nn.Linear((output_dim + 1) * args.lookahead_options, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_dim, args.lookahead_options + 1),
+        )
+        self.softmax = torch.nn.Softmax(dim=0)
+        
+    def forward(self, x, y):
+        x = self.model(x)
+        means, logstds = torch.split(x, [self.output_dim, self.output_dim], dim=-1)
+        loss = (((y - means) ** 2) / (2 * torch.exp(logstds) ** 2)) + logstds
+        return loss.mean()
     
-    def forward(self, X):
-        return self.model(X)
+    def get_prediction(self, x):
+        x = self.model(x)
+        means, logstds = torch.split(x, [self.output_dim, self.output_dim], dim=-1)
+        return means, logstds
     
     def reset(self):
         self.trajectories = []
+        self.rtgs = []
+        self.stds = []
+
+    def select_action(self):
+        rtgs = torch.stack(self.rtgs)
+        stds = torch.stack(self.stds)
+        x = torch.cat([rtgs, stds], dim=-1)
+        scores = self.confidence_network(x.flatten())
+        probabilities = self.softmax(scores)
+        highest_probability, most_probable_action = torch.max(probabilities), torch.argmax(probabilities)
+        return (most_probable_action, 0) if most_probable_action < args.lookahead_options else (np.random.randint(low=0, high=args.lookahead_options), 1)
+    
+    def confidence_forward(self, episode_rtgs, episode_stds):
+        x = torch.cat([episode_rtgs.unsqueeze(-1), episode_stds], dim=-1)
+        x = x.flatten(start_dim=1, end_dim=2)
+        episode_scores = self.confidence_network(x)
+        episode_preferred_actions, _ = torch.max(episode_scores, dim=-1) # (n_steps,)
+        return episode_preferred_actions.flatten()
 
 class Memory():
     def __init__(self, env):
@@ -67,7 +106,7 @@ class BestMemory(Memory):
             return
         
         # forget
-        forget_mask = torch.ones_like(self.rtgs) * (torch.rand(self.rtgs.shape) > 0.01)
+        forget_mask = torch.ones_like(self.rtgs) * (torch.rand(self.rtgs.shape).to(device) > 0.01)
         self.rtgs *= forget_mask
         self.rtgs, sorted_indices = torch.sort(self.rtgs, descending=True)
         self.source_state_action = self.source_state_action[sorted_indices]
@@ -248,7 +287,7 @@ def parse_args():
                         help='number of options looked ahead')
     parser.add_argument('--memory-size', type=int, default=1e4,
                         help='number of states stored in memory')
-    parser.add_argument('--mlp-epochs', type=int, default=20,
+    parser.add_argument('--mlp-epochs', type=int, default=10,
                         help='number of epochs the MLP is trained for')
     args = parser.parse_args()
     args.memory_size = int(args.memory_size)
@@ -310,11 +349,12 @@ if __name__ == '__main__':
 
     actor = Actor(env, activation=Mish).to(device)
     critic = Critic(env, activation=Mish).to(device)
-    theory = MLP(env).to(device)
+    theory = DynamicsModel(env).to(device)
     memory = MemoryMixer(env)
     adam_actor = torch.optim.Adam(actor.parameters(), lr=3e-4)
     adam_critic = torch.optim.Adam(critic.parameters(), lr=1e-3)
-    adam_theory = torch.optim.Adam(theory.parameters(), lr=1e-4)
+    adam_theory = torch.optim.Adam(theory.model.parameters(), lr=1e-4)
+    adam_confidence = torch.optim.Adam(theory.confidence_network.parameters(), lr=5e-5)
 
     if args.log_train:
         writer = tensorboard.SummaryWriter(f'runs/{run_name}')
@@ -343,9 +383,14 @@ if __name__ == '__main__':
             actions = torch.zeros((args.num_steps,)+env.action_space.shape, dtype=torch.float32).to(device)
             logprobs = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             rewards = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
+            dynamics_choices = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             dones = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             values = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
+            episode_rtgs = torch.zeros((args.num_steps, args.lookahead_options), dtype=torch.float32).to(device) # all options not documented
+            episode_stds = torch.zeros((args.num_steps, args.lookahead_options)+env.observation_space.shape, dtype=torch.float32).to(device) # all options not documented
             clip_fracs = []
+            random_action_fracs = []
+            sampled_action_choices = []
             j = 0
             while j < args.num_steps:
                 # gathering rollout data
@@ -356,35 +401,35 @@ if __name__ == '__main__':
 
                 # lookahead sequence:
                 theory.reset()
-                for l_i in range(args.lookahead_steps):
-                    if len(theory.trajectories) == 0:
-                        for _ in range(args.lookahead_options):
-                            action = dist.sample()
+                for l_o in range(args.lookahead_options):
+                    for l_i in range(args.lookahead_steps):
+                        if l_i == 0:
+                            lookahead_action = dist.sample()
                             with torch.no_grad():
-                                projected_state = theory(torch.cat([state, action]))
-                                projected_discounted_reward = critic(projected_state) - critic(state)
-                            theory.trajectories.append([[action], projected_discounted_reward, projected_state])
-                    else:
-                        for l_o in range(len(theory.trajectories)):
-                            trajectory = theory.trajectories[l_o]
+                                projected_state, previous_stds = theory.get_prediction(torch.cat([state, lookahead_action]))
+                                previous_discounted_reward = critic(projected_state) - critic(state)
+                            lookahead_actions = [lookahead_action]
+                        else:
                             with torch.no_grad():
-                                action_means, action_stds = actor(trajectory[2])
+                                action_means, action_stds = actor(projected_state)
                             dist_ = torch.distributions.Normal(action_means, action_stds)
-                            action = dist_.sample()
+                            lookahead_action = dist_.sample()
                             with torch.no_grad():
-                                projected_state = theory(torch.cat([trajectory[2], action]))
-                                projected_discounted_reward = args.gamma ** (len(trajectory[0])) * (critic(projected_state) - critic(state))
-                            previous_actions = trajectory[0]
-                            previous_projected_reward = trajectory[1]
-                            theory.trajectories.pop(l_o)
-                            previous_actions.append(action)
-                            theory.trajectories.append([previous_actions, previous_projected_reward + projected_discounted_reward, projected_state])
-                sorted_trajectories = sorted(theory.trajectories, key = lambda trajectory:trajectory[1], reverse=True)
-                best_trajectory = sorted_trajectories[0]
-                best_action = best_trajectory[0][0]
-                action = best_action
+                                projected_state, stds = theory.get_prediction(torch.cat([projected_state, lookahead_action]))
+                                projected_discounted_reward = (args.gamma ** l_i) * (critic(projected_state) - critic(state))
+                            previous_discounted_reward += projected_discounted_reward
+                            previous_stds += stds
+                            lookahead_actions.append(lookahead_action)
+                    theory.trajectories.append(lookahead_actions)
+                    theory.rtgs.append(previous_discounted_reward)
+                    theory.stds.append(previous_stds)
 
-                # action = dist.sample()
+                with torch.no_grad():
+                    selected_action_index, random_selection_or_not = theory.select_action()
+                action = theory.trajectories[selected_action_index][0]
+                episode_rtgs[j] = torch.cat(theory.rtgs)
+                episode_stds[j] = torch.stack(theory.stds)
+
                 logprob = dist.log_prob(action)
                 observations[j] = state
                 actions[j] = action
@@ -393,6 +438,8 @@ if __name__ == '__main__':
                 rewards[j] = torch.tensor(reward, dtype=torch.float32).to(device) # nonzero after self done but not others
                 dones[j] = torch.tensor(done, dtype=torch.float32).to(device) # nonzero after self done but not others
                 values[j] = value
+                random_action_fracs.append(random_selection_or_not)
+                sampled_action_choices.append(selected_action_index)
                 state = torch.from_numpy(state).float().to(device)
                 if done:
                     break
@@ -434,10 +481,16 @@ if __name__ == '__main__':
             memory.add(observations[:done_index], actions[:done_index], rtgs[:done_index])
             source_state_actions, dest_states = memory.get_mapped_pairs()
             for epoch in range(args.mlp_epochs):
-                theory_loss = torch.nn.functional.mse_loss(theory(source_state_actions), dest_states)
+                theory_loss = theory(source_state_actions, dest_states)
                 adam_theory.zero_grad()
                 theory_loss.backward()
                 adam_theory.step()
+
+            confidence_network_choices = theory.confidence_forward(episode_rtgs[:done_index], episode_stds[:done_index])
+            confidence_network_choices = (confidence_network_choices / confidence_network_choices.detach() * advantages[:done_index].detach()).mean()
+            adam_confidence.zero_grad()
+            confidence_network_choices.backward()
+            adam_confidence.step()
 
             if args.log_train:
                 writer.add_scalar("loss/critic_loss", critic_loss.detach(), global_step=i)
@@ -445,10 +498,10 @@ if __name__ == '__main__':
                 writer.add_histogram("gradients/critic",
                                 torch.cat([p.grad.view(-1) for p in critic.parameters()]), global_step=i)
                 writer.add_scalar('charts/learning_rate', adam_actor.param_groups[0]['lr'], global_step=i)
-                # writer.add_scalar('charts/entropy', entropy_loss.item(), global_step)
+                writer.add_scalar('charts/random_action_frac', np.mean(random_action_fracs), global_step=i)
+                writer.add_scalar('charts/mean_action_chosen', np.mean(sampled_action_choices), global_step=i)
                 writer.add_scalar('charts/approx_kl', approx_kl.item(), global_step=i)
                 writer.add_scalar("charts/clipfrac", np.mean(clip_fracs), global_step=i)
-                # writer.add_scalar('losses/explained_variance', explained_var, global_step)
                 writer.add_scalar('charts/SPS', int(i/ (time.time() - start_time)), i)
             adam_critic.step()
 

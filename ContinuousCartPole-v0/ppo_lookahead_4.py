@@ -381,8 +381,10 @@ if __name__ == '__main__':
                             theory.trajectories.append([previous_actions, previous_projected_reward + projected_discounted_reward, projected_state])
                 sorted_trajectories = sorted(theory.trajectories, key = lambda trajectory:trajectory[1], reverse=True)
                 best_trajectory = sorted_trajectories[0]
+                random_trajectory = sorted_trajectories[np.random.randint(0, len(sorted_trajectories))]
                 best_action = best_trajectory[0][0]
-                action = best_action
+                random_action = random_trajectory[0][0]
+                action = best_action if np.random.rand() > 0.5 else random_action
 
                 # action = dist.sample()
                 logprob = dist.log_prob(action)
