@@ -29,34 +29,14 @@ class Dynamics(gym.Env):
         for model_name, model_kwargs_dict in zip(self.galaxy_model_list, self.galaxy_model_kwargs_list):
             self.galaxy_models.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
 
-    def step(self, action):
+    def step(self, action, delta=1e-5):
         action = self._process_actions(action)
         self.init_params += action
         orbit = self._calculate_orbit()
-        # out_of_box_mask = orbit[:3] > np.expand_dims(self.high[:3], axis=-1)
-        # first_index = np.argmax(out_of_box_mask, axis=1, keepdims=True).min()
-        # orbit = orbit[:,:first_index]
-        orbit_model = self.create_orbit_model()
-        orbit_model_opt = torch.optim.Adam(orbit_model.parameters(), lr=1e-3)
-        prev_states = torch.tensor(orbit[:,:-1], dtype=torch.float32, device=self.device).transpose(dim0=-1, dim1=-2)
-        dest_states = torch.tensor(orbit[:,1:], dtype=torch.float32, device=self.device).transpose(dim0=-1, dim1=-2)
-        for _ in range(self.orbit_model_epochs):
-            x = orbit_model(prev_states)
-            loss = F.mse_loss(x, dest_states)
-            orbit_model_opt.zero_grad()
-            loss.backward()
-            orbit_model_opt.step()
-        orbit_rewards = 0
-        info = {}
-        for delta in self.predicted_orbit_delta_list:
-            delta_orbit = prev_states[:-delta]
-            delta_dest_orbit = dest_states[delta:]
-            for _ in range(delta):
-                with torch.no_grad():
-                    delta_orbit = orbit_model(delta_orbit)
-            orbit_rewards += self.error(delta_dest_orbit, delta_orbit).item() / len(prev_states)
-            info['%d_y'%delta] = delta_dest_orbit
-            info['%d_x'%delta] = delta_orbit
+        init_params_delta = self.init_params + np.random.normal(scale=delta, size=len(self.init_params))
+        orbit_delta = self._calculate_orbit(init_params_delta)
+        orbit_dists = np.linalg.norm(orbit.y - orbit_delta.y, axis=0)
+        log_orbit_dists = np.log(orbit_dists + 1e-8)
         return self.init_params, orbit_rewards, False, False, info # rewards, dones must be calculated externally
 
     def reset(self, init_params=None):
@@ -76,8 +56,9 @@ class Dynamics(gym.Env):
     def render(self, mode='human'):
         return
     
-    def _calculate_orbit(self):
-        return solve_ivp(self.get_equations, t_span=(0, self.orbit_duration), y0=self.init_params, t_eval=np.linspace(0, self.orbit_duration, self.orbit_timesteps)).y[:]
+    def _calculate_orbit(self, init_params=None):
+        if init_params == None: init_params = self.init_params
+        return solve_ivp(self.get_equations, t_span=(0, self.orbit_duration), y0=init_params, t_eval=np.linspace(0, self.orbit_duration, self.orbit_timesteps))
         
     def get_acceleration(self, pos):
         ax, ay, az = 0, 0, 0
@@ -104,6 +85,7 @@ class Dynamics(gym.Env):
             exec('self.' + param + ' = ' + '%s'%val)
 
         self.device = torch.device('cuda' if self.cuda and torch.cuda.is_available else 'cpu')
+        print(f'[ENV] Using {self.device}')
 
         if self.seed != None:
             assert(type(self.seed) == int)
