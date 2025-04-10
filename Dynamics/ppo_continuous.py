@@ -81,7 +81,7 @@ def parse_args():
                         help='if True, training will be logged with Tensorboard')
     
     # Performance altering
-    parser.add_argument('--num-steps', type=int, default=10,
+    parser.add_argument('--num-steps', type=int, default=256,
                         help='number of steps per environment per rollout')
     parser.add_argument('--anneal-lr', type=lambda x:bool(strtobool(x)), default=False, nargs='?', const=True,
                         help='if True, LR is annealed')
@@ -109,6 +109,8 @@ def parse_args():
                         help='the maximum norm for gradient clipping')
     parser.add_argument('--target-kl', type=float, default=None,
                         help='if and the threshold kl-d value with which early stopping must be evaluated')
+    parser.add_argument('--init-params', type=float, nargs='+',
+                        help='initial parameters at each environment reset')
     args = parser.parse_args()
     return args    
 
@@ -159,7 +161,6 @@ if __name__ == '__main__':
     critic = Critic(env, activation=Mish).to(device)
     adam_actor = torch.optim.Adam(actor.parameters(), lr=3e-4)
     adam_critic = torch.optim.Adam(critic.parameters(), lr=1e-3)
-
     if args.log_train:
         writer = tensorboard.SummaryWriter(f'Dynamics/runs/{run_name}')
         writer.add_text(
@@ -169,7 +170,10 @@ if __name__ == '__main__':
     start_time = time.time()
     update = 0
     episodic_reward = 0
-    params_dict = {}
+    best_reward = 0
+    best_actor = None
+    best_critic = None
+    best_state = None
     print(f'[AGENT] Using {device}')
     with tqdm(range(int(args.total_timesteps)), desc=f'episodic_reward: {episodic_reward}') as progress:
         for i in range(int(args.total_timesteps)):
@@ -182,7 +186,7 @@ if __name__ == '__main__':
                 adam_critic.param_groups[0]['lr'] = critic_lrnow
             prev_logprob = None
             done = False
-            state, _ = env.reset(init_params=[0.48813504, 2.15189366, 1.02763376, 2.69299098, 4.58071204, 8.75364678])
+            state, _ = env.reset(args.init_params)
             state = torch.tensor(state, dtype=torch.float32).to(device)
 
             observations = torch.zeros((args.num_steps,)+env.observation_space.shape, dtype=torch.float32).to(device)
@@ -254,11 +258,18 @@ if __name__ == '__main__':
             adam_critic.step()
 
             episodic_reward = rewards.sum(dim=0).max().cpu().numpy()
+            if episodic_reward > best_reward:
+                best_reward = episodic_reward
+                best_critic = critic.state_dict()
+                best_actor = actor.state_dict()
+                best_state = state.tolist()
             progress.set_description(f'episodic_reward: {episodic_reward}')
-            best_reward_index = torch.argmax(rewards)
-            params_dict[rewards[best_reward_index].numpy().item()] = observations[best_reward_index].tolist()
             progress.update()
-        writer.add_text(
-            'init_params',
-            '|reward|init_params|\n|-|-|\n%s'%('\n'.join([f'|{key}|{value}' for key, value in params_dict.items()])),
-        )
+    try:
+        os.mkdir(f'Dynamics/runs/{run_name}_weights')
+    except:
+        pass
+    torch.save(best_actor, f'Dynamics/runs/{run_name}_weights/actor.pth')
+    torch.save(best_critic, f'Dynamics/runs/{run_name}_weights/critic.pth')
+    print(best_reward, 'best_reward')
+    print(best_state, 'best_state')

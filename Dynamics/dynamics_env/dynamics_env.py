@@ -12,9 +12,9 @@ class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
         # self.high = np.array([50.0, 50.0, 50.0, 300.0, 300.0, 300.0, 45.9114146119, 45.9114146119, 45.9114146119])
-        self.high = np.array([50.0, 50.0, 50.0, 300.0, 300.0, 300.0])
+        self.high = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])
         # self.low = np.array([-50.0, -50.0, -50.0, -300.0, -300.0, -300.0, 0., 0., 0.])
-        self.low = np.array([-50.0, -50.0, -50.0, -300.0, -300.0, -300.0])
+        self.low = np.array([-10.0, -10.0, -10.0, -1.0, -1.0, -1.0])
         self.action_space = gym.spaces.Box(
             low=self.low/10,
             high=self.high/10,
@@ -29,35 +29,45 @@ class Dynamics(gym.Env):
         for model_name, model_kwargs_dict in zip(self.galaxy_model_list, self.galaxy_model_kwargs_list):
             self.galaxy_models.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
 
-    def step(self, action, delta=1e-5):
+    def step(self, action, delta=1e-8):
         action = self._process_actions(action)
-        self.init_params += action
-        orbit = self._calculate_orbit()
+        self.init_params = np.clip(self.init_params + action, self.low, self.high)
         init_params_delta = self.init_params + np.random.normal(scale=delta, size=len(self.init_params))
-        orbit_delta = self._calculate_orbit(init_params_delta)
+        orbit = self._calculate_orbit()
+        orbit_delta = self._calculate_orbit(init_params=init_params_delta)
+
+        # orbit_out_of_bounds_mask = np.abs(orbit.y[:3]) > np.expand_dims(self.high[:3], axis=-1)
+        # orbit_delta_out_of_bounds_mask = np.abs(orbit_delta.y[:3]) > np.expand_dims(self.high[:3], axis=-1)
+        # combined_mask = (orbit_out_of_bounds_mask * orbit_delta_out_of_bounds_mask).prod(axis=0)
+        # if combined_mask.sum() == 0:
+        #     last_index = len(combined_mask)
+        # else:
+        #     last_index = np.argmax(combined_mask)
+        # if last_index < 10:
+        #     return self.init_params, 0, False, False, {}
         orbit_dists = np.linalg.norm(orbit.y - orbit_delta.y, axis=0)
         log_orbit_dists = np.log(orbit_dists + 1e-8)
-        return self.init_params, orbit_rewards, False, False, info # rewards, dones must be calculated externally
+        # fit_coeffs = np.polyfit(orbit.t[:last_index], log_orbit_dists[:last_index], 1)
+        fit_coeffs = np.polyfit(orbit.t, log_orbit_dists, 1)
+        max_r = np.max(np.linalg.norm(orbit.y[:3], axis=0))
+        reward = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
 
-    def reset(self, init_params=None):
-        if init_params == None:
+        return self.init_params, reward, False, False, {}
+
+    def reset(self, init_params=[]):
+        if len(init_params) == 0:
             self.init_params = self._process_actions((np.random.rand(6,)*2-1) * self.high / 50)
-            print('[ENV]: Initial parameters not specified, using the following, selected randomly:', self.init_params)
+            # print('[ENV]: Initial parameters not specified, using the following, selected randomly:', self.init_params) # Define verbose
         else:
             assert (np.abs(np.array(init_params)) <= self.high).all(), "If initial parameters are specified, they must be within the observation space"
             self.init_params = self._process_actions(np.array(init_params))
-        # self.phase_coords = self.init_params
-        # self.orbit = self._calculate_orbit()
-        # self.orbit_timesteps = len(self.orbit.y[0])
-        # self.orbit_ax, self.orbit_ay, self.orbit_az = self.get_acceleration(self.orbit.y[:3,:self.orbit_timesteps])
-        # self.orbit_rewards = 0
         return self.init_params, self._get_info()
 
     def render(self, mode='human'):
         return
     
-    def _calculate_orbit(self, init_params=None):
-        if init_params == None: init_params = self.init_params
+    def _calculate_orbit(self, init_params=[]):
+        if len(init_params) == 0: init_params = self.init_params
         return solve_ivp(self.get_equations, t_span=(0, self.orbit_duration), y0=init_params, t_eval=np.linspace(0, self.orbit_duration, self.orbit_timesteps))
         
     def get_acceleration(self, pos):
@@ -80,7 +90,7 @@ class Dynamics(gym.Env):
         self.predicted_orbit_delta_list = [10]
         self.orbit_model_epochs = int(1e4)
         self.orbit_timesteps = 1000
-        self.orbit_duration = 100 # Myr
+        self.orbit_duration = 1000 # Myr
         for param, val in hyperparameters.items():
             exec('self.' + param + ' = ' + '%s'%val)
 
@@ -97,7 +107,7 @@ class Dynamics(gym.Env):
         return {}
     
     def _process_actions(self, action):
-        return np.clip(action, self.low / 10, self.high / 10)
+        return np.clip(self._denormalise_state(action), self.low, self.high)
     
     def _normalise_state(self, state):
         return state / self.high
@@ -108,11 +118,5 @@ class Dynamics(gym.Env):
     def error(self, true_val, pred_val):
         return torch.sum(((true_val - pred_val)/pred_val)**2)
     
-    def create_orbit_model(self, hidden_dim=64):
-        return torch.nn.Sequential(
-            torch.nn.Linear(self.observation_space.shape[0], hidden_dim),
-            torch.nn.ReLU(),
-            # torch.nn.Linear(hidden_dim, hidden_dim),
-            # torch.nn.ReLU(),
-            torch.nn.Linear(hidden_dim, self.observation_space.shape[0]),
-        )
+    def out_of_bounds_damping(self, r_max):
+        return np.e**(-1/self.high[0] / 1e3) if r_max < self.high[0] else np.e**(-r_max / self.high[0] / 1e3)

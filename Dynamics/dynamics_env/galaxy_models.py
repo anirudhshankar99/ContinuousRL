@@ -24,8 +24,8 @@ class PointSource():
         self.M = M # in solar M
         self.pos = np.array(pos) # in pc
     
-    def get_potential(self, m, pos):
-        assert len(pos) == len(self.pos), "Dimensions of position vector must be consistent with that of the source potential"
+    def get_field(self, m, pos):
+        assert pos.shape[0] == len(self.pos), "Dimensions of position vector must be consistent with that of the source potential"
         r = np.linalg.norm((self.pos - pos))
         return -G_IN_PC_KMS * self.M * m / r
     
@@ -36,7 +36,7 @@ class PointSource():
         else: pos_t = self.pos
         del_r = pos_t - pos # in pc
         r = np.linalg.norm(del_r, axis=0) # in pc
-        a = -G_IN_PC_KMS * self.M / r**3 * pos
+        a = -G_IN_PC_KMS * self.M / (r**3 + 1e-5) * pos
         ax, ay, az = np.split(a, 3, axis=0)
         return ax, ay, az
     
@@ -47,7 +47,7 @@ class Bulge():
         self.pos = pos
 
     def get_potential(self, m, pos):
-        assert len(pos) == len(self.pos), "Dimensions of position vector must be consistent with that of the source potential"
+        assert pos.shape[0] == len(self.pos), "Dimensions of position vector must be consistent with that of the source potential"
         r = np.linalg.norm((self.pos - pos))
         return -G_IN_PC_KMS * self.M * m / (r + self.a_b)
     
