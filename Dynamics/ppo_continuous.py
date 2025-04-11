@@ -10,6 +10,7 @@ import os
 import random
 import time
 from dynamics_env.dynamics_env import Dynamics
+import pandas as pd
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     nn.init.orthogonal_(layer.weight, std)
@@ -27,7 +28,7 @@ class Mish(nn.Module):
     def __init__(self): super().__init__()
     def forward(self, input): return mish(input)
 
-# Actor module, categorical actions only
+# Actor module
 class Actor(nn.Module):
     def __init__(self, env, activation=nn.Tanh):
         super().__init__()
@@ -170,10 +171,7 @@ if __name__ == '__main__':
     start_time = time.time()
     update = 0
     episodic_reward = 0
-    best_reward = 0
-    best_actor = None
-    best_critic = None
-    best_state = None
+    state_list = []
     print(f'[AGENT] Using {device}')
     with tqdm(range(int(args.total_timesteps)), desc=f'episodic_reward: {episodic_reward}') as progress:
         for i in range(int(args.total_timesteps)):
@@ -258,18 +256,10 @@ if __name__ == '__main__':
             adam_critic.step()
 
             episodic_reward = rewards.sum(dim=0).max().cpu().numpy()
-            if episodic_reward > best_reward:
-                best_reward = episodic_reward
-                best_critic = critic.state_dict()
-                best_actor = actor.state_dict()
-                best_state = state.tolist()
+            state_list.append([episodic_reward]+state.tolist())
             progress.set_description(f'episodic_reward: {episodic_reward}')
             progress.update()
-    try:
-        os.mkdir(f'Dynamics/runs/{run_name}_weights')
-    except:
-        pass
-    torch.save(best_actor, f'Dynamics/runs/{run_name}_weights/actor.pth')
-    torch.save(best_critic, f'Dynamics/runs/{run_name}_weights/critic.pth')
-    print(best_reward, 'best_reward')
-    print(best_state, 'best_state')
+    state_list = np.array(state_list)
+    save_mask = state_list[:,0] > np.max(state_list[:,0]) / 2
+    save_df = pd.DataFrame(state_list[save_mask],columns=['reward', 'x', 'y', 'z', 'vx', 'vy', 'vz'])
+    save_df.to_csv(f'Dynamics/runs/{run_name}_best_performers.csv',index=False)

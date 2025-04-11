@@ -36,18 +36,8 @@ class Dynamics(gym.Env):
         orbit = self._calculate_orbit()
         orbit_delta = self._calculate_orbit(init_params=init_params_delta)
 
-        # orbit_out_of_bounds_mask = np.abs(orbit.y[:3]) > np.expand_dims(self.high[:3], axis=-1)
-        # orbit_delta_out_of_bounds_mask = np.abs(orbit_delta.y[:3]) > np.expand_dims(self.high[:3], axis=-1)
-        # combined_mask = (orbit_out_of_bounds_mask * orbit_delta_out_of_bounds_mask).prod(axis=0)
-        # if combined_mask.sum() == 0:
-        #     last_index = len(combined_mask)
-        # else:
-        #     last_index = np.argmax(combined_mask)
-        # if last_index < 10:
-        #     return self.init_params, 0, False, False, {}
         orbit_dists = np.linalg.norm(orbit.y - orbit_delta.y, axis=0)
         log_orbit_dists = np.log(orbit_dists + 1e-8)
-        # fit_coeffs = np.polyfit(orbit.t[:last_index], log_orbit_dists[:last_index], 1)
         fit_coeffs = np.polyfit(orbit.t, log_orbit_dists, 1)
         max_r = np.max(np.linalg.norm(orbit.y[:3], axis=0))
         reward = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
@@ -57,7 +47,6 @@ class Dynamics(gym.Env):
     def reset(self, init_params=[]):
         if len(init_params) == 0:
             self.init_params = self._process_actions((np.random.rand(6,)*2-1) * self.high / 50)
-            # print('[ENV]: Initial parameters not specified, using the following, selected randomly:', self.init_params) # Define verbose
         else:
             assert (np.abs(np.array(init_params)) <= self.high).all(), "If initial parameters are specified, they must be within the observation space"
             self.init_params = self._process_actions(np.array(init_params))
