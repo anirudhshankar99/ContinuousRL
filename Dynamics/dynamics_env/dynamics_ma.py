@@ -11,11 +11,14 @@ import torch.nn.functional as F
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
-        self.high = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])
-        self.low = np.array([-10.0, -10.0, -10.0, -1.0, -1.0, -1.0])
+        high = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])
+        low = np.array([-10.0, -10.0, -10.0, -1.0, -1.0, -1.0])
+        self.n_agents = len(self.dynamic_potential_list)
+        self.high = np.repeat(np.expand_dims(high, 0), self.n_agents, 0).flatten()
+        self.low = np.repeat(np.expand_dims(low, 0), self.n_agents, 0).flatten()
         self.action_space = gym.spaces.Box(
-            low=self.low/10,
-            high=self.high/10,
+            low=self.low,
+            high=self.high,
             dtype=np.float64
         )
         self.observation_space = gym.spaces.Box(
@@ -37,7 +40,7 @@ class Dynamics(gym.Env):
         max_r = np.max(np.linalg.norm(orbit.y[:3], axis=0))
         reward = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
 
-        return self.init_params, reward, False, False, {}
+        return self._get_ma(self.init_params), self._get_ma(reward), self._get_ma(False), self._get_ma(False), {}
 
     def reset(self, init_params=[]):
         if len(init_params) == 0:
@@ -45,10 +48,13 @@ class Dynamics(gym.Env):
         else:
             assert (np.abs(np.array(init_params)) <= self.high).all(), "If initial parameters are specified, they must be within the observation space"
             self.init_params = self._process_actions(np.array(init_params))
-        self.galaxy_models = []
-        for model_name, model_kwargs_dict in zip(self.galaxy_model_list, self.galaxy_model_kwargs_list):
-            self.galaxy_models.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
-        return self.init_params, self._get_info()
+        self.stationary_potentials = []
+        for model_name, model_kwargs_dict in zip(self.stationary_potential_list, self.stationary_potential_kwargs_list):
+            self.stationary_potentials.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
+        self.dynamic_potentials = []
+        for model_name, model_kwargs_dict in zip(self.dynamic_potential_list, self.dynamic_potential_kwargs_list):
+            self.dynamic_potentials.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
+        return self._get_ma(self.init_params), self._get_info()
 
     def render(self, mode='human'):
         return
@@ -58,24 +64,33 @@ class Dynamics(gym.Env):
         return solve_ivp(self.get_equations, t_span=(0, self.orbit_duration), y0=init_params, t_eval=np.linspace(0, self.orbit_duration, self.orbit_timesteps))
         
     def get_acceleration(self, pos):
-        ax, ay, az = 0, 0, 0
-        for galaxy_model in self.galaxy_models:
-            dax, day, daz = galaxy_model.get_acceleration(pos)
-            ax, ay, az = ax + dax, ay + day, az + daz
-        return ax, ay, az
+        a = []
+        for agent in range(self.n_agents):
+            agent_ax, agent_ay, agent_az = 0, 0, 0
+            for galaxy_model in self.stationary_potentials:
+                dax, day, daz = galaxy_model.get_acceleration(pos[agent])
+                agent_ax, agent_ay, agent_az = agent_ax + dax, agent_ay + day, agent_az + daz
+            for other_agent in range(self.n_agents):
+                if agent == other_agent: continue
+                dax, day, daz = self.dynamic_potentials[other_agent].get_acceleration(pos[agent], selfpos=pos[other_agent])
+                agent_ax, agent_ay, agent_az = agent_ax + dax, agent_ay + day, agent_az + daz
+            a.append([agent_ax, agent_ay, agent_az])
+        return a
     
     def get_equations(self, t, w):
-        x, y, z, vx, vy, vz = w
-        ax, ay, az = self.get_acceleration(np.array([x, y, z]))
-        return [vx, vy, vz, ax.item(), ay.item(), az.item()]
+        phasecoords = w.reshape(-1, 6)
+        pos, vel = np.split(phasecoords, [3,3], axis=1)
+        a = self.get_acceleration(pos)
+        agent_phase_coords = np.array([vel[agent].tolist()+a[agent] for agent in range(self.n_agents)])
+        return agent_phase_coords
 
     def _init_hyperparameters(self, hyperparameters):
-        self.galaxy_model_list = ['point_source']
-        self.galaxy_model_kwargs_list = [{}]
+        self.stationary_potential_list = ['point_source']
+        self.stationary_potential_kwargs_list = [{'M':10}]
+        self.dynamic_potential_list = []
+        self.dynamic_potential_kwargs_list = [{}]
         self.seed = 0
         self.cuda = False
-        self.predicted_orbit_delta_list = [10]
-        self.orbit_model_epochs = int(1e4)
         self.orbit_timesteps = 1000
         self.orbit_duration = 1000 # Myr
         for param, val in hyperparameters.items():
@@ -84,14 +99,18 @@ class Dynamics(gym.Env):
         self.device = torch.device('cuda' if self.cuda and torch.cuda.is_available else 'cpu')
         print(f'[ENV] Using {self.device}')
 
-        if self.seed != None:
-            assert(type(self.seed) == int)
-            torch.manual_seed(self.seed)
-            np.random.seed(self.seed)
-            print(f"[ENV] Seed set to {self.seed}")
+        if self.seed == None:
+            self.seed = np.random.randint(0, 100)
+        assert(type(self.seed) == int)
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        print(f"[ENV] Seed set to {self.seed}")
 
     def _get_info(self):
         return {}
+    
+    def _get_ma(self, obs):
+        return {'%d'%agent_id:obs for agent_id in range(self.n_agents)}
     
     def _process_actions(self, action):
         return np.clip(self._denormalise_state(action), self.low, self.high)
