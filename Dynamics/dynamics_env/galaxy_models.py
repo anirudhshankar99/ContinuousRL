@@ -31,7 +31,7 @@ class PointSource():
         return -G_IN_PC_KMS * self.M * m / r
     
     def get_acceleration(self, pos, selfpos=None):
-        if selfpos is not None: selfpos = self.pos
+        if selfpos is None: selfpos = self.pos
         # assert pos.shape[0] == selfpos.shape[0], f"Dimensions of position vector must be consistent with that of the source potential, position vector shape: {pos.shape}"
         if len(pos.shape) > len(selfpos.shape):
             selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
@@ -39,7 +39,7 @@ class PointSource():
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
         del_r = selfpos - pos # in pc
         r = np.linalg.norm(del_r, axis=0) # in pc
-        a = -G_IN_PC_KMS * self.M / (r**3 + 1e-5) * pos
+        a = G_IN_PC_KMS * self.M / (r**3 + 1e-5) * del_r
         ax, ay, az = np.split(a, 3, axis=0)
         return ax, ay, az
     

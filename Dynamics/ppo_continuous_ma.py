@@ -82,7 +82,7 @@ def parse_args():
                         help='if True, training will be logged with Tensorboard')
     
     # Performance altering
-    parser.add_argument('--num-steps', type=int, default=256,
+    parser.add_argument('--num-steps', type=int, default=1,
                         help='number of steps per environment per rollout')
     parser.add_argument('--anneal-lr', type=lambda x:bool(strtobool(x)), default=False, nargs='?', const=True,
                         help='if True, LR is annealed')
@@ -218,25 +218,25 @@ if __name__ == '__main__':
                     step_actions[agent] = action.numpy()
                     logprobs[agent][j] = logprob
                     values[agent][j] = value
-                states, rewards, dones, _, info = env.step(step_actions)
+                states, reward, done, _, info = env.step(step_actions)
+                states = {key:torch.tensor(value, dtype=torch.float32).to(device) for key,value in states.items()}
                 for agent in range(args.num_agents):
-                    rewards[j] = torch.tensor(rewards[agent], dtype=torch.float32).to(device)
-                    dones[j] = torch.tensor(dones[agent], dtype=torch.float32).to(device)
-                    # state = torch.from_numpy(state).float().to(device)
-                    if np.any(dones.values()):
-                        break
-                    j += 1
+                    rewards[agent][j] = torch.tensor(reward[agent], dtype=torch.float32).to(device)
+                    dones[agent][j] = torch.tensor(done[agent], dtype=torch.float32).to(device)
+                if np.any(dones.values()):
+                    break
+                j += 1
             
             # advantage calculation
-            for agent in args.num_agents:
+            for agent in range(args.num_agents):
                 advantages = torch.zeros_like(rewards[agent]).to(device)
                 lastgaelam = 0
                 done_index = dones[agent].nonzero().max().item() if dones[agent].any() else args.num_steps
                 for t in reversed(range(done_index)):
-                    if t == args.num_steps - 1:
-                        advantages[t] = lastgaelam = rewards[agent][t] + (1- dones[agent][t]) * args.gamma * values[agent][t] + args.gamma * args.gae_lambda * (1-dones[agent][t]) * lastgaelam
-                    else:
-                        advantages[t] = lastgaelam = rewards[agent][t] + (1-dones[agent][t+1]) * args.gamma * values[agent][t+1] - (1-dones[agent][t])*values[agent][t] + args.gamma * args.gae_lambda * (1-dones[agent][t+1]) * lastgaelam  
+                    # if t == args.num_steps - 1:
+                    advantages = lastgaelam = rewards[agent] + (1- dones[agent]) * args.gamma * values[agent] + args.gamma * args.gae_lambda * (1-dones[agent]) * lastgaelam
+                    # else:
+                    #     advantages[t] = lastgaelam = rewards[agent][t] + (1-dones[agent][t+1]) * args.gamma * values[agent][t+1] - (1-dones[agent][t])*values[agent][t] + args.gamma * args.gae_lambda * (1-dones[agent][t+1]) * lastgaelam  
 
                 action_means, action_stds = actors[agent](observations[agent])
                 dist = torch.distributions.Normal(action_means, action_stds)
@@ -252,7 +252,6 @@ if __name__ == '__main__':
                 adam_critics[agent].zero_grad()
                 critic_loss.backward()
                 adam_critics[agent].step()
-
                 if args.log_train:
                     writer.add_scalar("loss/actor_loss_%d"%agent, actor_loss.detach(), global_step=i)
                     writer.add_scalar("reward/episode_reward_%d"%agent, rewards[agent].sum(dim=0).max().cpu().numpy(), global_step=i)
@@ -262,7 +261,7 @@ if __name__ == '__main__':
 
             episodic_reward = 0
             for agent in range(args.num_agents):
-                episodic_reward += rewards[agent].sum(dim=0).max().cpu().numpy()
+                episodic_reward += rewards[agent].sum(dim=0).max().cpu().item()
             if args.log_train:
                 writer.add_scalar("reward/total_episode_reward", episodic_reward, global_step=i)
             state_list.append([episodic_reward]+states[0].tolist())

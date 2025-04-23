@@ -7,6 +7,11 @@ except:
 import torch
 from scipy.integrate import solve_ivp
 
+class Orbit():
+    def __init__(self, y, t):
+        self.y = y
+        self.t = t
+
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
@@ -18,8 +23,8 @@ class Dynamics(gym.Env):
         self.high_cat = high
         self.low_cat = low
         self.action_space = gym.spaces.Box(
-            low=low,
-            high=high,
+            low=self.low,
+            high=self.high,
             dtype=np.float64
         )
         self.observation_space = gym.spaces.Box(
@@ -29,28 +34,29 @@ class Dynamics(gym.Env):
         )
 
     def step(self, action, delta=1e-8):
-        action = self._process_actions(np.array(list(action.values())))
-        self.init_params = np.clip(self.init_params + action, self.low, self.high)
+        action = self._process_actions(action)
+        self.init_params = np.clip(self.init_params + action, self.low_cat, self.high_cat)
         init_params_delta = self.init_params + np.random.normal(scale=delta, size=len(self.init_params))
         orbit = self._calculate_orbit()
         orbit_delta = self._calculate_orbit(init_params=init_params_delta)
-
+        if orbit == None or orbit_delta == None:
+            return self._get_ma(self.init_params), {agent:0 for agent in range(self.num_agents)}, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta}
         agent_rewards = {}
         for agent in range(self.num_agents):
             # of the form (x y z vx vy vz), (x y z vx vy vz),...
             orbit_dists = np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6] - orbit_delta.y[agent * 6: (agent+1) * 6], axis=0)
             log_orbit_dists = np.log(orbit_dists + 1e-8)
             fit_coeffs = np.polyfit(orbit.t, log_orbit_dists, 1)
-            max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
-            agent_rewards[agent] = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
-        return self._get_ma(self.init_params), agent_rewards, self._get_ma(False), self._get_ma(False), {}
+            # max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
+            agent_rewards[agent] = fit_coeffs[0] #* self.out_of_bounds_damping(max_r)
+        return self._get_ma(self.init_params), agent_rewards, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta}
 
     def reset(self, init_params=[]):
         if len(init_params) == 0:
-            self.init_params = self._process_actions((np.random.rand(6,)*2-1) * self.high / 50)
+            self.init_params = np.zeros((6 * self.num_agents,))
         else:
             assert (np.abs(np.array(init_params)) <= self.high_cat).all(), "If initial parameters are specified, they must be within the observation space"
-            self.init_params = self._process_actions(np.array(init_params))
+            self.init_params = self._clip_state(np.array(init_params))
         self.stationary_potentials = []
         for model_name, model_kwargs_dict in zip(self.stationary_potential_list, self.stationary_potential_kwargs_list):
             self.stationary_potentials.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
@@ -64,8 +70,30 @@ class Dynamics(gym.Env):
     
     def _calculate_orbit(self, init_params=[]):
         if len(init_params) == 0: init_params = self.init_params
-        return solve_ivp(self.get_equations, t_span=(0, self.orbit_duration), y0=init_params, t_eval=np.linspace(0, self.orbit_duration, self.orbit_timesteps))
+        return self.leapfrog_verlet(self.get_acceleration, t_span=(0, self.orbit_duration), y0=init_params, delta_t=self.orbit_duration / self.orbit_timesteps)
+        # return solve_ivp(self.get_equations, t_span=(0, self.orbit_duration), y0=init_params, t_eval=np.linspace(0, self.orbit_duration, self.orbit_timesteps))
         
+    def leapfrog_verlet(self, ode, t_span, y0, delta_t):
+        n_steps = int(t_span[1]//delta_t)
+        pos = np.zeros((n_steps, self.num_agents, 3))
+        vel = np.zeros((n_steps, self.num_agents, 3))
+        phasecoords = y0.reshape(-1, 6)
+        pos[0], vel[0] = np.split(phasecoords, 2, axis=1) # shape (2,3,)
+        acc = np.array(ode(pos[0]))
+        for i in range(1, n_steps):
+            v_half = vel[i-1] + 0.5 * delta_t * acc
+            pos[i] = pos[i-1] + delta_t * v_half
+            if (pos[i] > self.high[0]).any():
+                return None
+                pos, vel = pos[:i+1], vel[:i+1]
+                n_steps = i
+                break
+            new_acc = np.array(ode(pos[i]))
+            vel[i] = v_half + 0.5 * delta_t * new_acc
+            acc = new_acc
+        orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
+        return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
+    
     def get_acceleration(self, pos):
         """
         pos is the list of positions of all the agents
@@ -80,17 +108,17 @@ class Dynamics(gym.Env):
                 if agent == other_agent: continue
                 dax, day, daz = self.dynamic_potentials[other_agent].get_acceleration(pos[agent], selfpos=pos[other_agent])
                 agent_ax, agent_ay, agent_az = agent_ax + dax, agent_ay + day, agent_az + daz
-            a.append([agent_ax, agent_ay, agent_az])
+            a.append([agent_ax.item(), agent_ay.item(), agent_az.item()])
         return a
     
     def get_equations(self, t, w):
         # of the form (x y z vx vy vz), (x y z vx vy vz),...
         phasecoords = w.reshape(-1, 6)
-        pos, vel = np.split(phasecoords, [3,3], axis=1)
+        pos, vel = np.split(phasecoords, 2, axis=1)
         a = self.get_acceleration(pos)
         phasecoords_dot = []
         for agent in range(self.num_agents):
-            phasecoords_dot += [vel[agent].tolist() + a[agent].tolist()]
+            phasecoords_dot += vel[agent].tolist() + a[agent]
         # of the form (x. y. z. vx. vy. vz.), ...
         return np.array(phasecoords_dot)
 
@@ -123,8 +151,12 @@ class Dynamics(gym.Env):
         return {agent_id:obs for agent_id in range(self.num_agents)}
     
     def _process_actions(self, action):
+        action = np.concat(list(action.values()))
         return np.clip(self._denormalise_state(action), self.low_cat, self.high_cat)
     
+    def _clip_state(self, state):
+        return np.clip(self._denormalise_state(state), self.low_cat, self.high_cat)
+
     def _normalise_state(self, state):
         return state / self.high_cat
     
