@@ -153,8 +153,9 @@ if __name__ == '__main__':
             env = Dynamics(hyperparameters={
                 'stationary_potential_list':[],
                 'stationary_potential_kwargs_list':[],
-                'dynamic_potential_list':['point_source','point_source'],
-                'dynamic_potential_kwargs_list':[{'M':10}, {'M':10}],
+                'dynamic_potential_list':['point_source','point_source', 'point_source'],
+                # 'dynamic_potential_list':['point_source','point_source'],
+                'dynamic_potential_kwargs_list':[{'M':10}, {'M':10}, {'M':10}],
                 'seed':seed,
             })
             env.action_space.seed(seed)

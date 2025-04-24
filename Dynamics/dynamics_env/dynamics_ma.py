@@ -47,8 +47,9 @@ class Dynamics(gym.Env):
             orbit_dists = np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6] - orbit_delta.y[agent * 6: (agent+1) * 6], axis=0)
             log_orbit_dists = np.log(orbit_dists + 1e-8)
             fit_coeffs = np.polyfit(orbit.t, log_orbit_dists, 1)
-            # max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
-            agent_rewards[agent] = fit_coeffs[0] #* self.out_of_bounds_damping(max_r)
+            # out_of_bounds_mask = np.abs(orbit.y[agent * 6: (agent+1) * 6][:3]) > self.high[0]
+            max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
+            agent_rewards[agent] = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
         return self._get_ma(self.init_params), agent_rewards, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta}
 
     def reset(self, init_params=[]):
@@ -83,11 +84,11 @@ class Dynamics(gym.Env):
         for i in range(1, n_steps):
             v_half = vel[i-1] + 0.5 * delta_t * acc
             pos[i] = pos[i-1] + delta_t * v_half
-            if (pos[i] > self.high[0]).any():
-                return None
-                pos, vel = pos[:i+1], vel[:i+1]
-                n_steps = i
-                break
+            # if (np.abs(pos[i]) > self.high[0]).any():
+            #     return None
+            #     pos, vel = pos[:i+1], vel[:i+1]
+            #     n_steps = i
+            #     break
             new_acc = np.array(ode(pos[i]))
             vel[i] = v_half + 0.5 * delta_t * new_acc
             acc = new_acc
@@ -167,4 +168,4 @@ class Dynamics(gym.Env):
         return torch.sum(((true_val - pred_val)/pred_val)**2)
     
     def out_of_bounds_damping(self, r_max):
-        return np.e**(-1/self.high[0] / 1e3) if r_max < self.high[0] else np.e**(-r_max / self.high[0] / 1e3)
+        return np.e**(-1/np.e**3) if r_max < self.high[0] else np.e**(-r_max / self.high[0] / np.e**3)
