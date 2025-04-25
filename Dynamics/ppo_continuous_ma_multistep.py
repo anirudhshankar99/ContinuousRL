@@ -9,7 +9,7 @@ from tqdm import tqdm
 import os
 import random
 import time
-from dynamics_env.dynamics_ma import Dynamics
+from dynamics_env.dynamics_ma_multistep import Dynamics
 import pandas as pd
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
@@ -82,7 +82,7 @@ def parse_args():
                         help='if True, training will be logged with Tensorboard')
     
     # Performance altering
-    parser.add_argument('--num-steps', type=int, default=1,
+    parser.add_argument('--num-steps', type=int, default=10,
                         help='number of steps per environment per rollout')
     parser.add_argument('--anneal-lr', type=lambda x:bool(strtobool(x)), default=False, nargs='?', const=True,
                         help='if True, LR is annealed')
@@ -157,6 +157,7 @@ if __name__ == '__main__':
                 'dynamic_potential_list':['point_source','point_source'],
                 'dynamic_potential_kwargs_list':[{'M':10}, {'M':10}, {'M':10}],
                 'seed':seed,
+                'num_steps':args.num_steps,
             })
             env.action_space.seed(seed)
             env.observation_space.seed(seed)

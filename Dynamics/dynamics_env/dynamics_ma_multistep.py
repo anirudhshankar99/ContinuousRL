@@ -22,8 +22,8 @@ class Dynamics(gym.Env):
         self.high_cat = high
         self.low_cat = low
         self.action_space = gym.spaces.Box(
-            low=self.low,
-            high=self.high,
+            low=self.low / self.num_steps,
+            high=self.high / self.num_steps,
             dtype=np.float64
         )
         self.observation_space = gym.spaces.Box(
@@ -137,6 +137,7 @@ class Dynamics(gym.Env):
         self.cuda = False
         self.orbit_timesteps = 1000
         self.orbit_duration = 1000 # Myr
+        self.num_steps = 10
         for param, val in hyperparameters.items():
             exec('self.' + param + ' = ' + '%s'%val)
 
@@ -158,7 +159,7 @@ class Dynamics(gym.Env):
     
     def _process_actions(self, action):
         action = np.concat(list(action.values()))
-        return np.clip(self._denormalise_state(action), self.low_cat, self.high_cat)
+        return np.clip(self._denormalise_state(action), self.low_cat / self.num_steps, self.high_cat / self.num_steps)
     
     def _clip_state(self, state):
         return np.clip(self._denormalise_state(state), self.low_cat, self.high_cat)

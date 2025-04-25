@@ -1,0 +1,109 @@
+PWD /home/a.shankar/Documents/Work/ContinuousRL/Reports/250425
+INPUT /usr/local/texlive/2024/texmf.cnf
+INPUT /usr/local/texlive/2024/texmf-dist/web2c/texmf.cnf
+INPUT /usr/local/texlive/2024/texmf-var/web2c/pdftex/pdflatex.fmt
+INPUT /home/a.shankar/Documents/Work/ContinuousRL/Reports/250425/main.tex
+OUTPUT main.log
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/base/size10.clo
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/base/size10.clo
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/base/size10.clo
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/graphicx.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/graphicx.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/keyval.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/keyval.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/graphics.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/graphics.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/trig.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics/trig.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics-def/pdftex.def
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics-def/pdftex.def
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/graphics-def/pdftex.def
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
+INPUT ./main.aux
+INPUT ./main.aux
+INPUT main.aux
+OUTPUT main.aux
+INPUT /usr/local/texlive/2024/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+INPUT /usr/local/texlive/2024/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+INPUT /usr/local/texlive/2024/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+INPUT /usr/local/texlive/2024/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/map/fontname/texfonts.map
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmr17.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmr12.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmr8.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmr6.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmmi12.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmmi8.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmmi6.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmsy10.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmsy8.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmsy6.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmr12.tfm
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/tfm/public/cm/cmbx12.tfm
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg
+OUTPUT main.pdf
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg
+INPUT /usr/local/texlive/2024/texmf-var/fonts/map/pdftex/updmap/pdftex.map
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_2.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_2.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_2.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_2.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_2.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/two_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_0.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_1.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_3.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_3.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_3.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_3.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_3.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_5.jpg
+INPUT /home/a.shankar/Downloads/To send/250425/three_body_5.jpg
+INPUT main.aux
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb
+INPUT /usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb

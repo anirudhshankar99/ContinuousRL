@@ -1,0 +1,202 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2025.2.3)  25 APR 2025 13:53
+entering extended mode
+ restricted \write18 enabled.
+ file:line:error style messages enabled.
+ %&-line parsing enabled.
+**/home/a.shankar/Documents/Work/ContinuousRL/Reports/250425/main.tex
+(/home/a.shankar/Documents/Work/ContinuousRL/Reports/250425/main.tex
+LaTeX2e <2024-11-01> patch level 2
+L3 programming layer <2025-01-18>
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2024/06/29 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/size10.clo
+File: size10.clo 2024/06/29 v1.4n Standard LaTeX file (size option)
+)
+\c@part=\count196
+\c@section=\count197
+\c@subsection=\count198
+\c@subsubsection=\count199
+\c@paragraph=\count266
+\c@subparagraph=\count267
+\c@figure=\count268
+\c@table=\count269
+\abovecaptionskip=\skip49
+\belowcaptionskip=\skip50
+\bibindent=\dimen141
+) (/usr/local/texlive/2024/texmf-dist/tex/latex/graphics/graphicx.sty
+Package: graphicx 2021/09/16 v1.2d Enhanced LaTeX Graphics (DPC,SPQR)
+ (/usr/local/texlive/2024/texmf-dist/tex/latex/graphics/keyval.sty
+Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
+\KV@toks@=\toks17
+) (/usr/local/texlive/2024/texmf-dist/tex/latex/graphics/graphics.sty
+Package: graphics 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
+ (/usr/local/texlive/2024/texmf-dist/tex/latex/graphics/trig.sty
+Package: trig 2023/12/02 v1.11 sin cos tan (DPC)
+) (/usr/local/texlive/2024/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: pdftex.def on input line 106.
+ (/usr/local/texlive/2024/texmf-dist/tex/latex/graphics-def/pdftex.def
+File: pdftex.def 2024/04/13 v1.2c Graphics/color driver for pdftex
+))
+\Gin@req@height=\dimen142
+\Gin@req@width=\dimen143
+) (/usr/local/texlive/2024/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
+File: l3backend-pdftex.def 2024-05-08 L3 backend support: PDF output (pdfTeX)
+\l__color_backend_stack_int=\count270
+\l__pdf_internal_box=\box52
+) (./main.aux)
+\openout1 = `main.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+ (/usr/local/texlive/2024/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count271
+\scratchdimen=\dimen144
+\scratchbox=\box53
+\nofMPsegments=\count272
+\nofMParguments=\count273
+\everyMPshowfont=\toks18
+\MPscratchCnt=\count274
+\MPscratchDim=\dimen145
+\MPnumerator=\count275
+\makeMPintoPDFobject=\count276
+\everyMPtoPDFconversion=\toks19
+) (/usr/local/texlive/2024/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
+Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 485.
+ (/usr/local/texlive/2024/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Live
+))
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <12> on input line 10.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <8> on input line 10.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <6> on input line 10.
+</home/a.shankar/Downloads/To send/250425/two_body_inits.jpg, id=1, 1297.84875pt x 720.6925pt>
+File: /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/two_body_inits.jpg  used on input line 15.
+(pdftex.def)             Requested size: 517.5pt x 287.37015pt.
+
+
+[1
+
+{/usr/local/texlive/2024/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
+
+[2 </home/a.shankar/Downloads/To send/250425/two_body_inits.jpg>]
+</home/a.shankar/Downloads/To send/250425/two_body_0.jpg, id=14, 2363.83125pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/two_body_0.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/two_body_0.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/two_body_0.jpg  used on input line 21.
+(pdftex.def)             Requested size: 517.5pt x 196.00652pt.
+
+
+[3 </home/a.shankar/Downloads/To send/250425/two_body_0.jpg>]
+</home/a.shankar/Downloads/To send/250425/two_body_1.jpg, id=18, 2359.81625pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/two_body_1.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/two_body_1.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/two_body_1.jpg  used on input line 27.
+(pdftex.def)             Requested size: 517.5pt x 196.34805pt.
+
+
+[4 </home/a.shankar/Downloads/To send/250425/two_body_1.jpg>]
+</home/a.shankar/Downloads/To send/250425/two_body_2.jpg, id=22, 2363.83125pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/two_body_2.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/two_body_2.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/two_body_2.jpg  used on input line 33.
+(pdftex.def)             Requested size: 517.5pt x 196.00652pt.
+
+
+[5 </home/a.shankar/Downloads/To send/250425/two_body_2.jpg>]
+</home/a.shankar/Downloads/To send/250425/two_body_5.jpg, id=26, 2359.81625pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/two_body_5.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/two_body_5.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/two_body_5.jpg  used on input line 39.
+(pdftex.def)             Requested size: 517.5pt x 196.34805pt.
+
+
+[6 </home/a.shankar/Downloads/To send/250425/two_body_5.jpg>]
+</home/a.shankar/Downloads/To send/250425/three_body_inits.jpg, id=30, 1297.84875pt x 720.6925pt>
+File: /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/three_body_inits.jpg  used on input line 46.
+(pdftex.def)             Requested size: 517.5pt x 287.37015pt.
+
+
+[7
+
+
+
+
+
+]
+
+[8 </home/a.shankar/Downloads/To send/250425/three_body_inits.jpg>]
+</home/a.shankar/Downloads/To send/250425/three_body_0.jpg, id=38, 2363.83125pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/three_body_0.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/three_body_0.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/three_body_0.jpg  used on input line 52.
+(pdftex.def)             Requested size: 517.5pt x 196.00652pt.
+
+
+[9 </home/a.shankar/Downloads/To send/250425/three_body_0.jpg>]
+</home/a.shankar/Downloads/To send/250425/three_body_1.jpg, id=42, 2359.81625pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/three_body_1.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/three_body_1.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/three_body_1.jpg  used on input line 58.
+(pdftex.def)             Requested size: 517.5pt x 196.34805pt.
+
+
+[10 </home/a.shankar/Downloads/To send/250425/three_body_1.jpg>]
+</home/a.shankar/Downloads/To send/250425/three_body_3.jpg, id=46, 2371.86125pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/three_body_3.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/three_body_3.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/three_body_3.jpg  used on input line 64.
+(pdftex.def)             Requested size: 517.5pt x 195.35074pt.
+
+
+[11 </home/a.shankar/Downloads/To send/250425/three_body_3.jpg>]
+</home/a.shankar/Downloads/To send/250425/three_body_5.jpg, id=50, 2367.84625pt x 895.345pt>
+File: /home/a.shankar/Downloads/To send/250425/three_body_5.jpg Graphic file (type jpg)
+<use /home/a.shankar/Downloads/To send/250425/three_body_5.jpg>
+Package pdftex.def Info: /home/a.shankar/Downloads/To send/250425/three_body_5.jpg  used on input line 70.
+(pdftex.def)             Requested size: 517.5pt x 195.67863pt.
+
+
+[12 </home/a.shankar/Downloads/To send/250425/three_body_5.jpg>] (./main.aux)
+ ***********
+LaTeX2e <2024-11-01> patch level 2
+L3 programming layer <2025-01-18>
+ ***********
+ ) 
+Here is how much of TeX's memory you used:
+ 1367 strings out of 473201
+ 25807 string characters out of 5716127
+ 409547 words of memory out of 5000000
+ 24655 multiletter control sequences out of 15000+600000
+ 562477 words of font info for 48 fonts, out of 8000000 for 9000
+ 1141 hyphenation exceptions out of 8191
+ 57i,8n,65p,260b,245s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb>
+Output written on main.pdf (12 pages, 1357683 bytes).
+PDF statistics:
+ 73 PDF objects out of 1000 (max. 8388607)
+ 40 compressed objects within 1 object stream
+ 0 named destinations out of 1000 (max. 500000)
+ 51 words of extra memory for PDF output out of 10000 (max. 10000000)
+
