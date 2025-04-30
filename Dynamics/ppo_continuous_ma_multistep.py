@@ -155,7 +155,7 @@ if __name__ == '__main__':
                 'stationary_potential_kwargs_list':[],
                 # 'dynamic_potential_list':['point_source','point_source', 'point_source'],
                 'dynamic_potential_list':['point_source','point_source'],
-                'dynamic_potential_kwargs_list':[{'M':10}, {'M':10}, {'M':10}],
+                'dynamic_potential_kwargs_list':[{'M':1e4}, {'M':1e4}, {'M':10}],
                 'seed':seed,
                 'num_steps':args.num_steps,
             })
@@ -225,7 +225,7 @@ if __name__ == '__main__':
                 for agent in range(args.num_agents):
                     rewards[agent][j] = torch.tensor(reward[agent], dtype=torch.float32).to(device)
                     dones[agent][j] = torch.tensor(done[agent], dtype=torch.float32).to(device)
-                if np.any(dones.values()):
+                if np.any(list(done.values())):
                     break
                 j += 1
             
@@ -266,7 +266,7 @@ if __name__ == '__main__':
                 episodic_reward += rewards[agent].sum(dim=0).max().cpu().item()
             if args.log_train:
                 writer.add_scalar("reward/total_episode_reward", episodic_reward, global_step=i)
-            state_list.append([episodic_reward]+states[0].tolist())
+            state_list.append([episodic_reward]+info['params'].tolist())
             progress.set_description(f'episodic_reward: {episodic_reward}')
             progress.update()
     state_list = np.array(state_list)

@@ -14,8 +14,8 @@ class Orbit():
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
-        self.high = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])
-        self.low = np.array([-10.0, -10.0, -10.0, -1.0, -1.0, -1.0])
+        self.high = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])*self.box_scaling
+        self.low = np.array([-10.0, -10.0, -10.0, -1.0, -1.0, -1.0])*self.box_scaling
         self.num_agents = len(self.dynamic_potential_list)
         high = np.repeat(np.expand_dims(self.high, 0), self.num_agents, 0).flatten()
         low = np.repeat(np.expand_dims(self.low, 0), self.num_agents, 0).flatten()
@@ -70,37 +70,39 @@ class Dynamics(gym.Env):
         if len(init_params) == 0: init_params = self.init_params
         return self.leapfrog_verlet(self.get_acceleration, t_span=(0, self.orbit_duration), y0=init_params, delta_t=self.orbit_duration / self.orbit_timesteps)
         
-    def leapfrog_verlet(self, ode, t_span, y0, delta_t):
+    def leapfrog_verlet(self, ode_function, t_span, y0, delta_t):
         n_steps = int((t_span[1]-t_span[0])//delta_t)
         pos = np.zeros((n_steps, self.num_agents, 3))
         vel = np.zeros((n_steps, self.num_agents, 3))
         phasecoords = y0.reshape(-1, 6)
         pos[0], vel[0] = np.split(phasecoords, 2, axis=1) # shape (2,3,)
-        acc = np.array(ode(pos[0]))
+        t = np.linspace(t_span[0], t_span[1], n_steps)
+        acc = np.array(ode_function(pos[0], t[0]))
         for i in range(1, n_steps):
             v_half = vel[i-1] + 0.5 * delta_t * acc
             pos[i] = pos[i-1] + delta_t * v_half
-            new_acc = np.array(ode(pos[i]))
+            new_acc = np.array(ode_function(pos[i], t[i]))
             vel[i] = v_half + 0.5 * delta_t * new_acc
             acc = new_acc
         orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
 
-    def reverse_leapfrog_verlet(self, ode, t_span, y0, delta_t):
-        n_steps = int(t_span[1]-t_span[0]//delta_t)
+    def reverse_leapfrog_verlet(self, ode_function, t_span, y0, delta_t):
+        n_steps = int((t_span[1]-t_span[0])//delta_t)
         pos = np.zeros((n_steps, self.num_agents, 3))
         vel = np.zeros((n_steps, self.num_agents, 3))
         phasecoords = y0.reshape(-1, 6)
         pos[n_steps-1], vel[n_steps-1] = np.split(phasecoords, 2, axis=1) # shape (2,3,)
-        acc = np.array(ode(pos[n_steps-1]))
+        t = np.linspace(t_span[0], t_span[1], n_steps)
+        acc = np.array(ode_function(pos[n_steps-1], t[n_steps-1]))
         for i in range(n_steps-1,0,-1):
             v_half = vel[i] - 0.5*acc*delta_t
             pos[i-1] = pos[i] - v_half*delta_t
-            prev_acc = np.array(ode(pos[i-1]))
+            prev_acc = np.array(ode_function(pos[i-1], t[i-1]))
             vel[i-1] = v_half - 0.5*prev_acc*delta_t
         orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
-    def get_acceleration(self, pos):
+    def get_acceleration(self, pos, t=None):
         """
         pos is the list of positions of all the agents
         """
@@ -108,11 +110,17 @@ class Dynamics(gym.Env):
         for agent in range(self.num_agents):
             agent_ax, agent_ay, agent_az = 0, 0, 0
             for galaxy_model in self.stationary_potentials:
-                dax, day, daz = galaxy_model.get_acceleration(pos[agent])
+                if galaxy_model.sign == 'bar':
+                    dax, day, daz = galaxy_model.get_acceleration(np.concat([pos[agent], np.array([t])], axis=-1))
+                else:
+                    dax, day, daz = galaxy_model.get_acceleration(pos[agent])
                 agent_ax, agent_ay, agent_az = agent_ax + dax, agent_ay + day, agent_az + daz
             for other_agent in range(self.num_agents):
                 if agent == other_agent: continue
-                dax, day, daz = self.dynamic_potentials[other_agent].get_acceleration(pos[agent], selfpos=pos[other_agent])
+                if self.dynamic_potentials[other_agent].sign == 'bar':
+                    dax, day, daz = self.dynamic_potentials[other_agent].get_acceleration(np.concat([pos[agent], np.array([t])], axis=-1), selfpos=pos[other_agent])
+                else:
+                    dax, day, daz = self.dynamic_potentials[other_agent].get_acceleration(pos[agent], selfpos=pos[other_agent])
                 agent_ax, agent_ay, agent_az = agent_ax + dax, agent_ay + day, agent_az + daz
             a.append([agent_ax.item(), agent_ay.item(), agent_az.item()])
         return a
@@ -136,7 +144,9 @@ class Dynamics(gym.Env):
         self.seed = 0
         self.cuda = False
         self.orbit_timesteps = 1000
-        self.orbit_duration = 1000 # Myr
+        self.orbit_duration = 10000 # Myr
+        self.box_scaling = 1
+        self.damping_delta = 0.1
         for param, val in hyperparameters.items():
             exec('self.' + param + ' = ' + '%s'%val)
 
@@ -170,4 +180,4 @@ class Dynamics(gym.Env):
         return state * self.high_cat
     
     def out_of_bounds_damping(self, r_max):
-        return np.e**(-1/np.e**3) if r_max < self.high[0] else np.e**(-r_max / self.high[0] / np.e**3)
+        return (1 + self.damping_delta)*np.e**(-1) if r_max < self.high[0] else np.e**(-r_max / self.high[0])+self.damping_delta*np.e**(-1)

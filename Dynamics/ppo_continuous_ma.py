@@ -114,6 +114,8 @@ def parse_args():
                         help='initial parameters at each environment reset')
     parser.add_argument('--num-agents', type=int, required=True,
                         help='number of agents in the environment')
+    parser.add_argument('--box-scaling', type=float, default=1.,
+                        help='default box size is 10 pc, this is a scaling on that size')
     args = parser.parse_args()
     if args.init_params == None:
         args.init_params = np.array([0. for _ in range(6 * args.num_agents)])
@@ -151,12 +153,12 @@ if __name__ == '__main__':
     def make_env(seed):
         def thunk():
             env = Dynamics(hyperparameters={
-                'stationary_potential_list':[],
-                'stationary_potential_kwargs_list':[],
-                # 'dynamic_potential_list':['point_source','point_source', 'point_source'],
+                'stationary_potential_list':['bar'],
+                'stationary_potential_kwargs_list':[{'M':1e10, 'a':5000, 'b':1500, 'c':1000, 'omega_p':0.04}],
                 'dynamic_potential_list':['point_source','point_source'],
-                'dynamic_potential_kwargs_list':[{'M':10}, {'M':10}, {'M':10}],
+                'dynamic_potential_kwargs_list':[{'M':1e4}, {'M':1e4}],
                 'seed':seed,
+                'box_scaling':args.box_scaling,
             })
             env.action_space.seed(seed)
             env.observation_space.seed(seed)

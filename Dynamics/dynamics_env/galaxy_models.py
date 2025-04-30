@@ -12,6 +12,11 @@ def point_source(init_params):
         return PointSource(init_params['M'])
     return PointSource(init_params['M'], init_params['pos'])
 
+def tracer(init_params):
+    if 'pos' not in init_params:
+        return PointSource(M=0)
+    return PointSource(M=0, pos=init_params['pos'])
+
 def bulge(init_params):
     assert 'M' in init_params, "Mass must be supplied to initialize a bulge potential"
     assert 'a_b' in init_params, "Bulge scale length must be supplied to initialize a bulge potential"
@@ -34,10 +39,21 @@ def halo(init_params):
         return Halo(init_params['v_halo'], init_params['r_c'])
     return Halo(init_params['v_halo'], init_params['r_c'], init_params['pos'])
 
+def bar(init_params):
+    assert 'M' in init_params, "Mass must be supplied to initialize a bar potential"
+    assert 'a' in init_params, "Semi-axis length a must be supplied to initialize a disk potential"
+    assert 'b' in init_params, "Semi-axis length b must be supplied to initialize a disk potential"
+    assert 'c' in init_params, "Semi-axis length c must be supplied to initialize a disk potential"
+    assert 'omega_p' in init_params, "Pattern speed must be supplied to initialize a disk potential"
+    if 'pos' not in init_params:
+        return Bar(init_params['M'], init_params['a'], init_params['b'], init_params['c'], init_params['omega_p'])
+    return Bar(init_params['M'], init_params['a'], init_params['b'], init_params['c'], init_params['omega_p'], init_params['pos'])
+
 class PointSource():
     def __init__(self, M, pos=[0., 0., 0.,]):
         self.M = M # in solar M
         self.pos = np.array(pos) # in pc
+        self.sign = 'point_source'
     
     def get_field(self, m, pos):
         # In development
@@ -51,9 +67,9 @@ class PointSource():
             selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
         elif len(pos.shape) < len(selfpos.shape):
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
-        del_r = selfpos - pos # in pc
+        del_r = pos - selfpos # in pc
         r = np.linalg.norm(del_r, axis=0) # in pc
-        a = G_IN_PC_KMS * self.M / (r**3 + 1e-5) * del_r
+        a = -G_IN_PC_KMS * self.M / (r**3 + 1e-5) * del_r
         ax, ay, az = np.split(a, 3, axis=0)
         return ax, ay, az
     
@@ -61,7 +77,8 @@ class Bulge():
     def __init__(self, M, a_b, pos=[0., 0., 0.,]):
         self.M = M
         self.a_b = a_b
-        self.pos = pos
+        self.pos = np.array(pos)
+        self.sign = 'bulge'
 
     def get_potential(self, m, pos):
         assert pos.shape[0] == len(self.pos), "Dimensions of position vector must be consistent with that of the source potential"
@@ -74,7 +91,7 @@ class Bulge():
             selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
         elif len(pos.shape) < len(selfpos.shape):
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
-        del_r = self.pos - pos # in pc
+        del_r = selfpos - pos # in pc
         r = np.linalg.norm(del_r, axis=0) # in pc
         a = G_IN_PC_KMS * self.M / (r * (r + self.a_b)**2) * del_r
         ax, ay, az = np.split(a, 3, axis=0)
@@ -84,7 +101,8 @@ class Halo():
     def __init__(self, v_halo, r_c, pos=[0., 0., 0.,]):
         self.v_halo = v_halo
         self.r_c = r_c
-        self.pos = pos
+        self.pos = np.array(pos)
+        self.sign = 'halo'
 
     def get_acceleration(self, pos, selfpos=None):
         if selfpos is None: selfpos = self.pos
@@ -92,7 +110,7 @@ class Halo():
             selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
         elif len(pos.shape) < len(selfpos.shape):
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
-        del_r = self.pos - pos # in pc
+        del_r = selfpos - pos # in pc
         r = np.linalg.norm(del_r, axis=0) # in pc
         r2 = r**2 + self.r_c**2
         a = self.v_halo**2 * del_r / r2
@@ -100,10 +118,12 @@ class Halo():
         return ax, ay, az
     
 class Disk():
-    def __init__(self, M, a, b):
+    def __init__(self, M, a, b, pos=[0., 0., 0.]):
         self.M = M
         self.a = a
         self.b = b
+        self.pos = np.array(pos)
+        self.sign = 'disk'
     
     def get_acceleration(self, pos, selfpos=None):
         if selfpos is None: selfpos = self.pos
@@ -111,7 +131,7 @@ class Disk():
             selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
         elif len(pos.shape) < len(selfpos.shape):
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
-        del_r = self.pos - pos # in pc
+        del_r = selfpos - pos # in pc
         # r = np.linalg.norm(del_r, axis=0) # in pc
         R = np.linalg.norm(del_r[:-1], axis=0)
         Z = del_r[-1]
@@ -122,19 +142,45 @@ class Disk():
         return ax, ay, az
     
 class Bar():
-    def __init__(self, M, a, b, c, omega_p):
+    def __init__(self, M, a, b, c, omega_p, pos=[0., 0., 0.,]):
         self.M = M
         self.a = a
         self.b = b
         self.c = c
         self.omega_p = omega_p
+        self.pos = np.array(pos)
+        self.sign = 'bar'
 
     def get_acceleration(self, pos, selfpos=None):
-        pass
+        assert pos.shape[-1] == 4, 'Calculation of bar potential requires also supplying temporal position'
+        pos, t, _ = np.split(pos, [3,4], axis=-1)
+        if selfpos is None: selfpos = self.pos
+        if len(pos.shape) > len(selfpos.shape):
+            selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
+        elif len(pos.shape) < len(selfpos.shape):
+            pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
+
+        del_r = pos - selfpos
+        theta = self.omega_p * t
+        cos_t, sin_t = np.cos(theta).item(), np.sin(theta).item()
+        rotation_matrix = np.array([[cos_t, -sin_t, 0],
+                                    [sin_t, cos_t, 0],
+                                    [0, 0, 1]])
+        rotated_del_r = del_r @ rotation_matrix
+        xi_eta_zeta = rotated_del_r / np.array([self.a, self.b, self.c])
+        inside_bar_mask = np.linalg.norm(xi_eta_zeta, axis=-1) < 1
+        A = -G_IN_PC_KMS * self.M
+        A_rotated = A * xi_eta_zeta / np.array([self.a**2, self.b**2, self.c**2])
+        A_intertial_frame = A_rotated @ rotation_matrix.transpose()
+        A_intertial_frame[~inside_bar_mask] = 0
+        ax, ay, az = np.split(A_intertial_frame, 3, axis=0)
+        return ax, ay, az
 
 model_mapping = {
     'point_source': point_source,
     'bulge': bulge,
     'halo': halo,
     'disk': disk,
+    'tracer': tracer,
+    'bar':bar,
 }

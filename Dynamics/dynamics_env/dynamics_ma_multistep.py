@@ -14,8 +14,8 @@ class Orbit():
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
-        self.high = np.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])
-        self.low = np.array([-10.0, -10.0, -10.0, -1.0, -1.0, -1.0])
+        self.high = np.array([1000.0, 1000.0, 1000.0, 10.0, 10.0, 10.0])
+        self.low = np.array([-1000.0, -1000.0, -1000.0, -10.0, -10.0, -10.0])
         self.num_agents = len(self.dynamic_potential_list)
         high = np.repeat(np.expand_dims(self.high, 0), self.num_agents, 0).flatten()
         low = np.repeat(np.expand_dims(self.low, 0), self.num_agents, 0).flatten()
@@ -32,8 +32,11 @@ class Dynamics(gym.Env):
             dtype=np.float64
         )
 
-    def step(self, action, delta=1e-8):
-        action = self._process_actions(action)
+    def step(self, action, delta=1e-8, single_step=False):
+        if single_step:
+            action = self._process_actions_single_step(action)
+        else:
+            action = self._process_actions(action)
         self.init_params = np.clip(self.init_params + action, self.low_cat, self.high_cat)
         init_params_delta = self.init_params + np.random.normal(scale=delta, size=len(self.init_params))
         orbit = self._calculate_orbit()
@@ -47,7 +50,7 @@ class Dynamics(gym.Env):
             fit_coeffs = np.polyfit(orbit.t, log_orbit_dists, 1)
             max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
             agent_rewards[agent] = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
-        return self._get_ma(self.init_params), agent_rewards, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta}
+        return self._get_ma(self._normalise_state(self.init_params)), agent_rewards, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta, 'params':self.init_params}
 
     def reset(self, init_params=[]):
         if len(init_params) == 0:
@@ -61,7 +64,7 @@ class Dynamics(gym.Env):
         self.dynamic_potentials = []
         for model_name, model_kwargs_dict in zip(self.dynamic_potential_list, self.dynamic_potential_kwargs_list):
             self.dynamic_potentials.append(galaxy_models.add_galaxy_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
-        return self._get_ma(self.init_params), self._get_info()
+        return self._get_ma(self._normalise_state(self.init_params)), self._get_info()
 
     def render(self, mode='human'):
         return
@@ -87,7 +90,7 @@ class Dynamics(gym.Env):
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
 
     def reverse_leapfrog_verlet(self, ode, t_span, y0, delta_t):
-        n_steps = int(t_span[1]-t_span[0]//delta_t)
+        n_steps = int((t_span[1]-t_span[0])//delta_t)
         pos = np.zeros((n_steps, self.num_agents, 3))
         vel = np.zeros((n_steps, self.num_agents, 3))
         phasecoords = y0.reshape(-1, 6)
@@ -161,6 +164,10 @@ class Dynamics(gym.Env):
         action = np.concat(list(action.values()))
         return np.clip(self._denormalise_state(action), self.low_cat / self.num_steps, self.high_cat / self.num_steps)
     
+    def _process_actions_single_step(self, action):
+        action = np.concat(list(action.values()))
+        return action #np.clip(self._denormalise_state(action), self.low_cat, self.high_cat)
+    
     def _clip_state(self, state):
         return np.clip(self._denormalise_state(state), self.low_cat, self.high_cat)
 
@@ -171,4 +178,4 @@ class Dynamics(gym.Env):
         return state * self.high_cat
     
     def out_of_bounds_damping(self, r_max):
-        return np.e**(-1/np.e**3) if r_max < self.high[0] else np.e**(-r_max / self.high[0] / np.e**3)
+        return np.e**(-1) if r_max < self.high[0] else np.e**(-r_max / self.high[0])
