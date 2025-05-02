@@ -82,7 +82,12 @@ class Dynamics(gym.Env):
             v_half = vel[i-1] + 0.5 * delta_t * acc
             pos[i] = pos[i-1] + delta_t * v_half
             new_acc = np.array(ode_function(pos[i], t[i]))
+            origin_capture = new_acc == np.inf
+            origin_capture = np.any(origin_capture, axis=-1)
             vel[i] = v_half + 0.5 * delta_t * new_acc
+            vel[i][origin_capture] = np.zeros_like(vel[i][origin_capture])
+            pos[i][origin_capture] = pos[i-1][origin_capture]
+            print(pos[i])
             acc = new_acc
         orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
@@ -102,6 +107,7 @@ class Dynamics(gym.Env):
             vel[i-1] = v_half - 0.5*prev_acc*delta_t
         orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
+    
     def get_acceleration(self, pos, t=None):
         """
         pos is the list of positions of all the agents

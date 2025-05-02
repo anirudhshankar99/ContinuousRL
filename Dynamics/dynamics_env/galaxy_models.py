@@ -1,6 +1,8 @@
 import numpy as np
-G_IN_PC_KMS = 4.30091e-3
 
+G_IN_PC_KMS = 4.30091e-3
+origin_capture_acc = 7500
+origin_capture_delta = 1e-4
 
 def add_galaxy_model(model_name, **kwargs):
     assert model_name in model_mapping, "Unsupported galaxy model: %s"%model_name
@@ -58,7 +60,7 @@ class PointSource():
     def get_field(self, m, pos):
         # In development
         assert pos.shape[0] == len(self.pos), "Dimensions of position vector must be consistent with that of the source potential"
-        r = np.linalg.norm((self.pos - pos))
+        r = np.linalg.norm((self.pos - pos), axis=-1)
         return -G_IN_PC_KMS * self.M * m / r
     
     def get_acceleration(self, pos, selfpos=None):
@@ -68,9 +70,13 @@ class PointSource():
         elif len(pos.shape) < len(selfpos.shape):
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
         del_r = pos - selfpos # in pc
-        r = np.linalg.norm(del_r, axis=0) # in pc
-        a = -G_IN_PC_KMS * self.M / (r**3 + 1e-5) * del_r
-        ax, ay, az = np.split(a, 3, axis=0)
+        if np.linalg.norm(del_r, axis=-1) < origin_capture_delta:
+            return np.split(np.ones_like(del_r) * np.inf, 3, axis=-1)
+        r = np.linalg.norm(del_r, axis=-1) # in pc
+        a = -G_IN_PC_KMS * self.M / (r**3) * del_r
+        ax, ay, az = np.split(a, 3, axis=-1)
+        if np.linalg.norm(a, axis=-1) > origin_capture_acc:
+            return np.split(np.ones_like(a) * np.inf, 3, axis=-1)
         return ax, ay, az
     
 class Bulge():
@@ -153,27 +159,27 @@ class Bar():
 
     def get_acceleration(self, pos, selfpos=None):
         assert pos.shape[-1] == 4, 'Calculation of bar potential requires also supplying temporal position'
-        pos, t, _ = np.split(pos, [3,4], axis=-1)
+        spatial_pos, t = pos[...,:3], pos[...,3:]
         if selfpos is None: selfpos = self.pos
-        if len(pos.shape) > len(selfpos.shape):
-            selfpos = np.expand_dims(selfpos, axis=[i for i in range(len(selfpos.shape), len(pos.shape))])
-        elif len(pos.shape) < len(selfpos.shape):
-            pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
 
-        del_r = pos - selfpos
+        del_r = spatial_pos - selfpos
+        if np.linalg.norm(del_r, axis=-1) < origin_capture_delta:
+            return np.split(np.ones_like(del_r) * np.inf, 3, axis=-1)
         theta = self.omega_p * t
-        cos_t, sin_t = np.cos(theta).item(), np.sin(theta).item()
-        rotation_matrix = np.array([[cos_t, -sin_t, 0],
-                                    [sin_t, cos_t, 0],
-                                    [0, 0, 1]])
-        rotated_del_r = del_r @ rotation_matrix
-        xi_eta_zeta = rotated_del_r / np.array([self.a, self.b, self.c])
-        inside_bar_mask = np.linalg.norm(xi_eta_zeta, axis=-1) < 1
-        A = -G_IN_PC_KMS * self.M
-        A_rotated = A * xi_eta_zeta / np.array([self.a**2, self.b**2, self.c**2])
-        A_intertial_frame = A_rotated @ rotation_matrix.transpose()
-        A_intertial_frame[~inside_bar_mask] = 0
-        ax, ay, az = np.split(A_intertial_frame, 3, axis=0)
+        cos_t, sin_t = np.cos(theta), np.sin(theta)
+        rotation_matrix = np.array(np.stack([np.concat([cos_t, -sin_t, np.zeros_like(theta)], axis=-1),
+                                    np.concat([sin_t, cos_t, np.zeros_like(theta)], axis=-1),
+                                    np.concat([np.zeros_like(theta), np.zeros_like(theta), np.ones_like(theta)], axis=-1)], axis=-2))
+        rotated_del_r = np.einsum('...j,ij->...i', del_r, rotation_matrix)
+        semi_axes = np.array([self.a, self.b, self.c])
+        xi_eta_zeta = rotated_del_r / semi_axes
+        R_eff = np.linalg.norm(xi_eta_zeta, axis=-1)
+        A = -G_IN_PC_KMS * self.M * xi_eta_zeta / (semi_axes**2 * (R_eff**2 + 1e-5)**(1.5))
+        rotation_matrix_T = np.transpose(rotation_matrix, axes=(-2,-1))
+        A_intertial_frame = np.einsum('...j,ij->...i', A, rotation_matrix_T)
+        ax, ay, az = np.split(A_intertial_frame, 3, axis=-1)
+        if np.linalg.norm(A_intertial_frame, axis=-1) > origin_capture_acc:
+            return np.split(np.ones_like(A_intertial_frame) * np.inf, 3, axis=-1)
         return ax, ay, az
 
 model_mapping = {
