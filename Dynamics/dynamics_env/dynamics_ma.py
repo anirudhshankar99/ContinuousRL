@@ -21,6 +21,9 @@ class Dynamics(gym.Env):
         low = np.repeat(np.expand_dims(self.low, 0), self.num_agents, 0).flatten()
         self.high_cat = high
         self.low_cat = low
+        self.km_to_pc = 3.241e-14
+        self.Myr_to_sec = 86400 * 365 * 1e6
+        self.orbit_duration *= self.Myr_to_sec
         self.action_space = gym.spaces.Box(
             low=self.low,
             high=self.high,
@@ -79,16 +82,28 @@ class Dynamics(gym.Env):
         t = np.linspace(t_span[0], t_span[1], n_steps)
         acc = np.array(ode_function(pos[0], t[0]))
         for i in range(1, n_steps):
-            v_half = vel[i-1] + 0.5 * delta_t * acc
-            pos[i] = pos[i-1] + delta_t * v_half
+            v_half = vel[i-1] + 0.5 * delta_t * acc * self.km_to_pc
+            pos[i] = pos[i-1] + delta_t * v_half * self.km_to_pc
+            # origin capture
+            w = pos[i] - pos[i-1]
+            for galaxy_model in self.stationary_potentials:
+                v = galaxy_model.pos - pos[i-1]
+                w_dot_v = self.dot_product(w, v)
+                v_dot_v = self.dot_product(v, v)
+                t_ = w_dot_v / v_dot_v
+                T = pos[i-1] + np.reshape(t_, (-1,1)) * v
+                origin_capture =  np.linalg.norm((T - galaxy_model.pos), axis=-1) < self.origin_capture_delta * self.box_scaling
+                vel[i][origin_capture] = np.zeros_like(vel[i][origin_capture])
+                pos[i][origin_capture] = T[origin_capture]
+                if np.any(origin_capture): break
             new_acc = np.array(ode_function(pos[i], t[i]))
-            origin_capture = new_acc == np.inf
-            origin_capture = np.any(origin_capture, axis=-1)
-            vel[i] = v_half + 0.5 * delta_t * new_acc
-            vel[i][origin_capture] = np.zeros_like(vel[i][origin_capture])
-            pos[i][origin_capture] = pos[i-1][origin_capture]
-            print(pos[i])
+            vel[i][~origin_capture] = (v_half + 0.5 * delta_t * new_acc * self.km_to_pc)[~origin_capture]
             acc = new_acc
+            acc[origin_capture] = np.zeros_like(acc[origin_capture])
+            if np.all(origin_capture):
+                pos[i:] = pos[i]
+                vel[i:] = vel[i]
+                break
         orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps))
 
@@ -149,10 +164,11 @@ class Dynamics(gym.Env):
         self.dynamic_potential_kwargs_list = [{}]
         self.seed = 0
         self.cuda = False
-        self.orbit_timesteps = 1000
-        self.orbit_duration = 10000 # Myr
+        self.orbit_timesteps = 100
+        self.orbit_duration = 100 # Myr
         self.box_scaling = 1
         self.damping_delta = 0.1
+        self.origin_capture_delta = 1e-1
         for param, val in hyperparameters.items():
             exec('self.' + param + ' = ' + '%s'%val)
 
@@ -187,3 +203,6 @@ class Dynamics(gym.Env):
     
     def out_of_bounds_damping(self, r_max):
         return (1 + self.damping_delta)*np.e**(-1) if r_max < self.high[0] else np.e**(-r_max / self.high[0])+self.damping_delta*np.e**(-1)
+    
+    def dot_product(self, a, b):
+        return np.sum(np.einsum('...i,...i->...i',a,b), axis=-1)

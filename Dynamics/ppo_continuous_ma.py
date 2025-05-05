@@ -155,10 +155,13 @@ if __name__ == '__main__':
             env = Dynamics(hyperparameters={
                 'stationary_potential_list':['bar'],
                 'stationary_potential_kwargs_list':[{'M':1e10, 'a':5000, 'b':1500, 'c':1000, 'omega_p':0.04}],
-                'dynamic_potential_list':['point_source','point_source'],
+                # 'dynamic_potential_list':['point_source','point_source'],
+                'dynamic_potential_list':['tracer','tracer'],
                 'dynamic_potential_kwargs_list':[{'M':1e4}, {'M':1e4}],
                 'seed':seed,
                 'box_scaling':args.box_scaling,
+                'orbit_duration':100,
+                'orbit_timesteps':100,
             })
             env.action_space.seed(seed)
             env.observation_space.seed(seed)
@@ -271,7 +274,7 @@ if __name__ == '__main__':
             progress.set_description(f'episodic_reward: {episodic_reward}')
             progress.update()
     state_list = np.array(state_list)
-    save_mask = state_list[:,0] > np.max(state_list[:,0]) / 2
+    save_mask = state_list[:,0] > (np.max(state_list[:,0]) / 2 + np.mean(state_list[:,0]))
     columns = ['reward']
     for agent in range(args.num_agents):
         columns += ['x', 'y', 'z', 'vx', 'vy', 'vz']

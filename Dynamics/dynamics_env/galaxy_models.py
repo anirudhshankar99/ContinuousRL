@@ -1,8 +1,7 @@
 import numpy as np
 
 G_IN_PC_KMS = 4.30091e-3
-origin_capture_acc = 7500
-origin_capture_delta = 1e-4
+MYR_TO_SEC = 86400 * 365 * 1e6
 
 def add_galaxy_model(model_name, **kwargs):
     assert model_name in model_mapping, "Unsupported galaxy model: %s"%model_name
@@ -70,13 +69,13 @@ class PointSource():
         elif len(pos.shape) < len(selfpos.shape):
             pos = np.expand_dims(pos, axis=[i for i in range(len(pos.shape), len(selfpos.shape))])
         del_r = pos - selfpos # in pc
-        if np.linalg.norm(del_r, axis=-1) < origin_capture_delta:
-            return np.split(np.ones_like(del_r) * np.inf, 3, axis=-1)
+        # if np.linalg.norm(del_r, axis=-1) < origin_capture_delta:
+        #     return np.split(np.ones_like(del_r) * np.inf, 3, axis=-1)
         r = np.linalg.norm(del_r, axis=-1) # in pc
-        a = -G_IN_PC_KMS * self.M / (r**3) * del_r
+        a = -G_IN_PC_KMS * self.M / (r**3 + 1e-5) * del_r
         ax, ay, az = np.split(a, 3, axis=-1)
-        if np.linalg.norm(a, axis=-1) > origin_capture_acc:
-            return np.split(np.ones_like(a) * np.inf, 3, axis=-1)
+        # if np.linalg.norm(a, axis=-1) > origin_capture_acc:
+        #     return np.split(np.ones_like(a) * np.inf, 3, axis=-1)
         return ax, ay, az
     
 class Bulge():
@@ -153,7 +152,7 @@ class Bar():
         self.a = a
         self.b = b
         self.c = c
-        self.omega_p = omega_p
+        self.omega_p = omega_p / MYR_TO_SEC
         self.pos = np.array(pos)
         self.sign = 'bar'
 
@@ -163,8 +162,6 @@ class Bar():
         if selfpos is None: selfpos = self.pos
 
         del_r = spatial_pos - selfpos
-        if np.linalg.norm(del_r, axis=-1) < origin_capture_delta:
-            return np.split(np.ones_like(del_r) * np.inf, 3, axis=-1)
         theta = self.omega_p * t
         cos_t, sin_t = np.cos(theta), np.sin(theta)
         rotation_matrix = np.array(np.stack([np.concat([cos_t, -sin_t, np.zeros_like(theta)], axis=-1),
@@ -178,8 +175,6 @@ class Bar():
         rotation_matrix_T = np.transpose(rotation_matrix, axes=(-2,-1))
         A_intertial_frame = np.einsum('...j,ij->...i', A, rotation_matrix_T)
         ax, ay, az = np.split(A_intertial_frame, 3, axis=-1)
-        if np.linalg.norm(A_intertial_frame, axis=-1) > origin_capture_acc:
-            return np.split(np.ones_like(A_intertial_frame) * np.inf, 3, axis=-1)
         return ax, ay, az
 
 model_mapping = {
