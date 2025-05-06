@@ -40,6 +40,7 @@ class Actor(nn.Module):
             nn.Linear(32, env.action_space.shape[0] * 2)
         )
         self.out_shape = env.action_space.shape[0]
+
     def forward(self, X):
         X = self.model(X)
         (means, log_stds) = torch.split(X, [self.out_shape, self.out_shape], dim=-1)
@@ -190,7 +191,6 @@ def rocket_function(t, y):
     dydt = np.zeros_like(y)
     dydt[:2] = vel
     dydt[2:4] = a_gravity + a_thrust
-    print(a_gravity, a_thrust)
     dydt[4] = mdot
     return dydt
 

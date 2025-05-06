@@ -53,7 +53,7 @@ class Dynamics(gym.Env):
         return {}
     
     def _process_actions(self, action):
-        return np.clip(action, -self.action_bounds, self.action_bounds)
+        return np.clip(action * self.action_bounds, -self.action_bounds, self.action_bounds)
     
     def _normalise_state(self, state):
         return state / self.high
