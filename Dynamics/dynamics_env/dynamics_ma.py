@@ -86,6 +86,7 @@ class Dynamics(gym.Env):
             pos[i] = pos[i-1] + delta_t * v_half * self.km_to_pc
             # origin capture
             w = pos[i] - pos[i-1]
+            origin_capture = vel[i] != vel[i]
             for galaxy_model in self.stationary_potentials:
                 v = galaxy_model.pos - pos[i-1]
                 w_dot_v = self.dot_product(w, v)

@@ -154,10 +154,14 @@ if __name__ == '__main__':
         def thunk():
             env = Dynamics(hyperparameters={
                 'stationary_potential_list':['bar'],
-                'stationary_potential_kwargs_list':[{'M':1e10, 'a':5000, 'b':1500, 'c':1000, 'omega_p':0.04}],
-                # 'dynamic_potential_list':['point_source','point_source'],
-                'dynamic_potential_list':['tracer','tracer'],
-                'dynamic_potential_kwargs_list':[{'M':1e4}, {'M':1e4}],
+                'stationary_potential_kwargs_list':[{'M':1e10, 'a':5000, 'b':1500, 'c':1000, 'omega_p':0.0}],
+                # 'stationary_potential_list':['point_source'],
+                # 'stationary_potential_kwargs_list':[{'M':1e10}],
+                # 'stationary_potential_list':[],
+                # 'stationary_potential_kwargs_list':[{}],
+                'dynamic_potential_list':['point_source','point_source'],
+                # 'dynamic_potential_list':['tracer','tracer'],
+                'dynamic_potential_kwargs_list':[{'M':1e10}, {'M':1e10}],
                 'seed':seed,
                 'box_scaling':args.box_scaling,
                 'orbit_duration':100,

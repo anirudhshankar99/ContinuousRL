@@ -9,9 +9,9 @@ from torch import log10 as ln
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
-        self.high = np.array([self.box_scale, self.box_scale, 1e6, 1e6, 1e12, 1e12, self.rocket_mass]) # pos x, y, vel x, y, acc x, y, m
-        self.low = np.array([-self.box_scale, -self.box_scale, -1e6, -1e6, -1e12, -1e12, 0.0])
-        self.action_bounds = np.array([self.max_thrust, self.max_thrust, 1.0]) # thrust~mdot*ve x, y, on/off
+        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]) # pos x, y, vel x, y, acc x, y, m
+        self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0])
+        self.action_bounds = np.array([self.max_thrust, self.max_thrust]) # thrust~mdot*ve x, y, on/off
         self.action_space = gym.spaces.Box(
             low=-self.action_bounds,
             high=self.action_bounds,

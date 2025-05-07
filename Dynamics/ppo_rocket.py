@@ -83,8 +83,8 @@ def parse_args():
                         help='if True, training will be logged with Tensorboard')
     
     # Performance altering
-    parser.add_argument('--num-steps', type=int, default=2048,
-                        help='number of steps per environment per rollout')
+    # parser.add_argument('--num-steps', type=int, default=2048,
+    #                     help='number of steps per environment per rollout')
     parser.add_argument('--gae', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True,
                         help='if False, gae will not be computed')
     parser.add_argument('--gamma', type=float, default=0.98,
@@ -113,6 +113,7 @@ def parse_args():
     args = parser.parse_args()
     args.dry_mass = args.rocket_mass * (1 - args.fuel_frac)
     destination_types = ['radius', 'destination', 'destination_planet']
+    args.num_steps = int(args.orbit_duration // args.orbit_timesteps)
     assert args.destination_type in destination_types
     return args    
 
@@ -147,8 +148,16 @@ def reward_function(pos, mass, previous_reward):
     return consistent_reward + completion_reward - previous_reward, completion_reward > 0
 
 def event_dest_reached(t, y):
-    pos = y[:3]
-    return 0 if np.linalg.norm(pos - args.destination) < args.destination_radius else 1
+    pos = y[:2]
+    if args.destination_type == 'radius':
+        current_radius = np.linalg.norm(pos - start_center)
+        completion = 0 if current_radius >= destination_radius else 1
+    elif args.destination_type == 'destination_planet':
+        planet_position = env.planetary_models[destination_planet_index].get_position()
+        completion = 0 if np.linalg.norm(pos - planet_position) < destination_planet_radius else 1
+    elif args.destination_type == 'destination':
+        completion = 0 if np.linalg.norm(pos - destination_coords) < destination_radius else 1
+    return completion
 event_dest_reached.terminal = True
 
 def rocket_function(t, y):
@@ -168,11 +177,10 @@ def rocket_function(t, y):
     logprob = dist.log_prob(action)
     action = env._process_actions(action)
     # rocket science
-    thrust = action[:-1].float().numpy() # in N (kg m/s^2)
-    engine_off = action[-1].float().numpy()
+    thrust = action.float().numpy() # in N (kg m/s^2)
     mdot = np.linalg.norm(thrust, axis=-1) / args.v_e # in m/s^2
     delta_m = mdot * args.orbit_duration / args.orbit_timesteps
-    if engine_off < 0 or (mass - delta_m) < args.dry_mass:
+    if (mass - delta_m) < args.dry_mass:
         a_thrust = np.zeros_like(thrust)
         mdot = 0
     else:
@@ -288,7 +296,7 @@ if __name__ == '__main__':
             dones = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             values = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             clip_fracs = []
-            orbit = solve_ivp(rocket_function, t_span=(0, args.orbit_duration), y0=init_params, t_eval=np.linspace(0, args.orbit_duration, args.orbit_timesteps))
+            orbit = solve_ivp(rocket_function, t_span=(0, args.orbit_duration), y0=init_params, t_eval=np.linspace(0, args.orbit_duration, args.orbit_timesteps), events=event_dest_reached)
             
             # advantage calculation
             advantages = torch.zeros_like(rewards).to(device)

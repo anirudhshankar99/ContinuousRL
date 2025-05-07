@@ -23,7 +23,7 @@ def tracer(init_params):
 class PointSource():
     def __init__(self, M, period, phase, orbit_radius):
         self.M = M # in kg
-        self.period = period / YR_TO_SEC # revolutions per sec
+        self.period = period * YR_TO_SEC # time per revolution
         self.orbit_radius = orbit_radius # in m
         self.sign = 'point_source'
         self.phase = phase # in rad
@@ -38,7 +38,7 @@ class PointSource():
         ax, ay = np.split(a, 2, axis=-1)
         return ax, ay
     
-    def get_position(self):
+    def get_position(self, t):
         theta = 2 * np.pi * t / self.period + self.phase
         return np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius # in m
 
