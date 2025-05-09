@@ -41,7 +41,12 @@ class PointSource():
     def get_position(self, t):
         theta = 2 * np.pi * t / self.period + self.phase
         return np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius # in m
-
+    
+    def get_velocity(self, t, speed):
+        theta = 2 * np.pi * t / self.period + self.phase
+        position = np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius # in m
+        unit_position_tangent = np.array([-position[...,1] , position[...,0]]) / np.linalg.norm(position)
+        return unit_position_tangent * speed
 model_mapping = {
     'point_source': point_source,
     'tracer': tracer,

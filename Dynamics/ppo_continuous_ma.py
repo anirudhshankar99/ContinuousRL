@@ -159,13 +159,15 @@ if __name__ == '__main__':
                 # 'stationary_potential_kwargs_list':[{'M':1e10}],
                 # 'stationary_potential_list':[],
                 # 'stationary_potential_kwargs_list':[{}],
-                'dynamic_potential_list':['point_source','point_source'],
+                # 'dynamic_potential_list':['point_source','point_source'],
                 # 'dynamic_potential_list':['tracer','tracer'],
-                'dynamic_potential_kwargs_list':[{'M':1e10}, {'M':1e10}],
+                # 'dynamic_potential_kwargs_list':[{'M':1e10}, {'M':1e10}],
+                'dynamic_potential_list':['point_source', 'point_source', 'point_source', 'point_source'],
+                'dynamic_potential_kwargs_list':[{'M':1e10}, {'M':1e10}, {'M':1e10}, {'M':1e10}],
                 'seed':seed,
                 'box_scaling':args.box_scaling,
-                'orbit_duration':100,
-                'orbit_timesteps':100,
+                'orbit_duration':500,
+                'orbit_timesteps':500,
             })
             env.action_space.seed(seed)
             env.observation_space.seed(seed)

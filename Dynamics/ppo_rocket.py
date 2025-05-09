@@ -101,7 +101,7 @@ def parse_args():
                         help='number of timesteps over which the orbit is integrated')
     parser.add_argument('--orbit-duration', type=float, default=100,
                         help='orbit time in years')
-    parser.add_argument('--max-engine-thrust', type=float, default=7500e3,
+    parser.add_argument('--max-engine-thrust', type=float, default=7500e3, # supposed to be 7500e3
                         help='maximum possible engine thrust in N')
     parser.add_argument('--rocket-mass', type=float, default=433100)
     parser.add_argument('--destination_type', type=str, default='radius',
@@ -110,10 +110,12 @@ def parse_args():
                         help='coordinates of the starting point')
     parser.add_argument('--destination-params', type=float, nargs='+', default=None,
                         help='parameters of the chosen destination type')
+    parser.add_argument('--capture-radius', type=float, default = 6371e2,
+                        help='radius at which rocket is deemed captured by a planet')
     args = parser.parse_args()
     args.dry_mass = args.rocket_mass * (1 - args.fuel_frac)
     destination_types = ['radius', 'destination', 'destination_planet']
-    args.num_steps = int(args.orbit_duration // args.orbit_timesteps)
+    args.num_steps = int(args.orbit_timesteps)
     assert args.destination_type in destination_types
     return args    
 
@@ -159,10 +161,18 @@ def event_dest_reached(t, y):
         completion = 0 if np.linalg.norm(pos - destination_coords) < destination_radius else 1
     return completion
 event_dest_reached.terminal = True
+def rocket_captured(t, y):
+    pos = y[:2]
+    min_dist = np.inf
+    for model in env.planetary_models:
+        dist = np.linalg.norm(pos - model.get_position(t))
+        min_dist = min(min_dist, dist)
+    return min_dist - args.capture_radius
+rocket_captured.terminal = True
 
 def rocket_function(t, y):
     # state packaging
-    episode_step = int(t // args.orbit_duration)
+    episode_step = int(t // (args.orbit_duration / args.orbit_timesteps))
     pos = y[:2]
     vel = y[2:4]
     mass = y[4:]
@@ -220,9 +230,10 @@ if __name__ == '__main__':
             env = Dynamics(hyperparameters={
                 'planetary_model_list':['point_source', 'point_source', 'point_source'],
                 'planetary_model_kwargs_list':[{'M':2e30, 'period':1e10, 'orbit_radius':0, 'phase':0}, # sun
-                                               {'M':2e30, 'period':11.86, 'orbit_radius':7.7866e11, 'phase':0.785}, # jupiter
-                                               {'M':2e30, 'period':1, 'orbit_radius':1.496e11, 'phase':3.945}], # earth
+                                                {'M':1.898e27, 'period':11.86, 'orbit_radius':7.7866e11, 'phase':0.785}, # jupiter
+                                                {'M':5.972e24, 'period':1, 'orbit_radius':1.496e11, 'phase':3.945}], # earth
                 'seed':seed,
+                'max_engine_thrust':args.max_engine_thrust,
             })
             env.action_space.seed(seed)
             env.observation_space.seed(seed)
@@ -246,13 +257,13 @@ if __name__ == '__main__':
     episodic_reward = 0
     print(f'[AGENT] Using {device}')
     if args.start == None:
-        leo_distance = 300e3 # 300e3 m
+        leo_distance = 6371e3 + 300e3 # 300e3 m
         leo_speed = 7.7e3 # 7.7e3 m/s
-        launch_theta = np.random.rand() * 2 * np.pi
+        earth_orbital_speed = 2.977e4 # m/s
+        launch_theta = np.random.rand() * 2 * np.pi * 0
         earth_phase, earth_orbit_radius = env.planetary_models[-1].phase, env.planetary_models[-1].orbit_radius
         launch_position = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_distance + np.array([np.cos(earth_phase), np.sin(earth_phase)]) * earth_orbit_radius
-        launch_velocity = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_speed
-        # launch_acc = env.get_acceleration(np.concat([launch_position, np.array([0])]))
+        launch_velocity = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_speed + env.planetary_models[-1].get_velocity(0, earth_orbital_speed)
         launch_mass = np.array([args.rocket_mass])
         init_params = np.concat([launch_position, launch_velocity, launch_mass])
     else: init_params = np.array(args.start)
@@ -260,9 +271,11 @@ if __name__ == '__main__':
         if args.destination_params == None:
             destination_radius = 35768e3 # geocentric orbit radius
             start_center = np.array([np.cos(earth_phase), np.sin(earth_phase)]) * earth_orbit_radius
+            start_radius = 6371e3 + 300e3
         else:
             destination_radius = args.destination_params[0]
             start_center = args.destination_params[1]
+            start_radius = args.destination_params[2]
     elif args.destination_type == 'destination_planet':
         if args.destination_params == None:
             destination_planet_index = len(env.planetary_models)-1
