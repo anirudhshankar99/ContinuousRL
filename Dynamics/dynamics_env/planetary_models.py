@@ -32,8 +32,8 @@ class PointSource():
         pos, t = pos[:2], pos[2] # in m, s
         theta = 2 * np.pi * t / self.period + self.phase
         selfpos = np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius # in m
-        del_r = pos - selfpos # in pc
-        r = np.linalg.norm(del_r, axis=-1) # in pc
+        del_r = pos - selfpos # in m
+        r = np.linalg.norm(del_r, axis=-1) # in m
         a = -G_IN_SI * self.M / (r**3 + 1e-5) * del_r
         ax, ay = np.split(a, 2, axis=-1)
         return ax, ay
