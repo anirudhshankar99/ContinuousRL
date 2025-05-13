@@ -2,6 +2,8 @@ import numpy as np
 
 G_IN_SI = 6.674e-11
 YR_TO_SEC = 86400 * 365
+acc_to_SI = 1.504e-4
+pos_to_SI = 1.496e11
 
 def add_planetary_model(model_name, **kwargs):
     assert model_name in model_mapping, "Unsupported galaxy model: %s"%model_name
@@ -34,13 +36,13 @@ class PointSource():
         selfpos = np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius # in m
         del_r = pos - selfpos # in m
         r = np.linalg.norm(del_r, axis=-1) # in m
-        a = -G_IN_SI * self.M / (r**3 + 1e-5) * del_r
+        a = -G_IN_SI * self.M / (r**3 + 1e-5) * del_r / acc_to_SI
         ax, ay = np.split(a, 2, axis=-1)
         return ax, ay
     
     def get_position(self, t):
         theta = 2 * np.pi * t / self.period + self.phase
-        return np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius # in m
+        return np.array([np.cos(theta), np.sin(theta)]) * self.orbit_radius / pos_to_SI # in m
     
     def get_velocity(self, t, speed):
         theta = 2 * np.pi * t / self.period + self.phase

@@ -42,9 +42,9 @@ class Dynamics(gym.Env):
         self.seed = 0
         self.rocket_mass = 433100
         self.box_scale = 4.578e12 # in km
-        self.max_engine_thrust = 7500e3 # in N
+        self.max_engine_thrust = 7500e3 / 1.504e-4 # in N\kg au / yr^2
         self.fuel_frac = 0.9
-        self.v_e = 3500 # in m/s
+        self.v_e = 3500e3 / 4.744e2 # in au/yr^2
 
         for param, val in hyperparameters.items():
             exec('self.' + param + ' = ' + '%s'%val)
