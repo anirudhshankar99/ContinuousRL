@@ -1,0 +1,93 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+
+\title{Figures and discussion}
+\author{Anirudh Shankar}
+\date{May 2025}
+
+\begin{document}
+
+\maketitle
+
+\section{Chaotic orbits}
+\textbf{Setup:\\}
+\begin{itemize}
+    \item Single step PPO
+    \item (non rotating) Bar potential with: $M_{bar}=1e10M\odot,a=5000pc,b=1500pc,c=1000pc,\Omega_p=0.0$
+    \item Rewards based on the lyapunov exponent, damped when leaving the 1pc box
+    \item initialized in a 1 pc box
+\end{itemize}
+\subsection{Two body orbits}
+\begin{itemize}
+    \item Point sources
+    \item 1e10 $M\odot$
+\end{itemize}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/body_1.png}
+    \caption{Orbits 1}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/body_2.png}
+    \caption{Orbits 2}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/body_3.png}
+    \caption{Orbits 3}
+\end{figure}
+\clearpage
+\subsection{Two tracer orbits}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/tracer_1.png}
+    \caption{Orbits 1}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/tracer_2.png}
+    \caption{Orbits 2}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/tracer_3.png}
+    \caption{Orbits 3}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/tracer_4.png}
+    \caption{Orbits 4}
+\end{figure}
+\clearpage
+\section{Rocket mission}
+\begin{itemize}
+    \item Solar system in 2D*
+    \item 3 body system with circular orbits*
+    \item Rocket deployed from LEO (low earth orbit, earth radius + 300 km)
+    \item Agent chooses thrust magnitude and direction
+    \item Targets with increasing difficulties:\\
+    \begin{enumerate}
+        \item GEO (geostationary orbit, 35768 km) -> sanity check to make sure agent is learning
+        \item L1 point (between the earth and the Sun)
+        \item Venus
+        \item Mars
+        \item Jupiter
+    \end{enumerate}
+    \item Three destination types: radius to be exceeded, destination planet, destination coordinates
+    \item Rocket science where- thrust decreases rocket mass, with limited usable mass
+    \item Rocket captured when too close to a planet
+    \item solve\_ivp calls between timesteps
+\end{itemize}
+\subsection{Trials without agent}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/rocket_captured.png}
+    \caption{Rocket capture}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{/home/a.shankar/Downloads/To send/250513/destination_reached.png}
+    \caption{GEO reached}
+\end{figure}
+\end{document}

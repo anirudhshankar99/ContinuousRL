@@ -91,18 +91,18 @@ def parse_args():
                         help='the value of the lambda parameter for gae')
     parser.add_argument('--clip-coef', type=float, default=0.2,
                         help='the surrogate ratios\' clipping coefficient')
-    parser.add_argument('--v-e', type=float, default=3000,
+    parser.add_argument('--v-e', type=float, default=3000e3,
                         help='exhaust velocity of the rocket in m/s')
     parser.add_argument('--fuel-frac', type=float, default=0.9,
                         help='fraction of the rocket\'s takeoff mass comprised of fuel')
-    parser.add_argument('--orbit-timesteps', type=int, default=1000,
+    parser.add_argument('--orbit-timesteps', type=int, default=250,
                         help='number of timesteps over which the orbit is integrated')
     parser.add_argument('--orbit-duration', type=float, default=5000,
-                        help='orbit time in years')
-    parser.add_argument('--max-engine-thrust', type=float, default=7500e2, # supposed to be 7500e3
+                        help='orbit time in s')
+    parser.add_argument('--max-engine-thrust', type=float, default=7500e3, # supposed to be 7500e3
                         help='maximum possible engine thrust in N')
     parser.add_argument('--rocket-mass', type=float, default=433100)
-    parser.add_argument('--destination_type', type=str, default='radius',
+    parser.add_argument('--destination-type', type=str, default='radius',
                         help='whether the destination is a radius limit or a location')
     parser.add_argument('--start', type=float, nargs='+', default=None,
                         help='coordinates of the starting point')
@@ -186,12 +186,10 @@ def event_rocket_captured(t, y, thrust):
 event_rocket_captured.terminal = True
 
 def rocket_function(t, y, thrust):
-    # print(thrust, 'rocket_thrust')
     # state packaging
     pos = y[:2]
     vel = y[2:4]
     mass = y[-1:]
-    # print(thrust/mass, 'rocket_acc')
     a_gravity = env.get_acceleration(np.concat([pos, np.array([t])]))
     # rocket science
     mdot = -np.linalg.norm(thrust, axis=-1) / args.v_e # in m/s^2
@@ -201,7 +199,6 @@ def rocket_function(t, y, thrust):
         mdot = 0
     else:
         a_thrust = thrust / mass
-    # print(a_thrust)
     # derivatives for integrator
     dydt = np.zeros_like(y)
     dydt[:2] = vel
@@ -282,15 +279,15 @@ if __name__ == '__main__':
         start_planet_distance = np.linalg.norm(init_params[:2] - env.planetary_models[destination_planet_index].get_position())
     elif args.destination_type == 'destination':
         if args.destination_params == None:
-            destination_distance = 3 * 1.496e11 # 3au in m
-            destination_theta = np.random.rand() * 2 * np.pi # in rad
-            destination_radius = 6371e3 # earth radius in m
+            destination_distance = -0.01 * earth_orbit_radius # L1 point from earth center in m
+            destination_theta = np.pi # in rad
+            destination_radius = 1e5 # earth radius in m
         else:
             destination_distance = args.destination_params[0]
             destination_theta = args.destination_params[1]
             destination_radius = args.destination_params[2]
-        start_destination_distance = np.linalg.norm(init_params[:2] - np.linalg.norm(np.array([np.cos(destination_theta), np.sin(destination_theta)]) * destination_distance))
         destination_coords = np.array([np.cos(destination_theta), np.sin(destination_theta)]) * destination_distance + np.array([np.cos(earth_phase), np.sin(earth_phase)]) * earth_orbit_radius
+        start_destination_distance = np.linalg.norm(init_params[:2] - destination_coords)
 
     with tqdm(range(int(args.total_timesteps)), desc=f'episodic_reward: {episodic_reward}') as progress:
         for i in range(int(args.total_timesteps)):
@@ -322,10 +319,11 @@ if __name__ == '__main__':
                     if len(orbit.t_events[0]) != 0: 
                         termination_status = 1
                         termination_y_events = orbit.y_events[0][0]
+                        y0 = termination_y_events
                     else: 
                         termination_status = 2
                         termination_y_events = orbit.y_events[1][0]
-                    y0 = orbit.y[:,0]
+                        y0 = termination_y_events
                 else:
                     y0 = orbit.y[:,-1]
                 t = t + args.delta_t
@@ -334,7 +332,7 @@ if __name__ == '__main__':
                 actions[j] = action
                 logprobs[j] = logprob
                 dones[j] = orbit.status
-                reward = reward_function(orbit.y[:2,-1], pos, orbit.y[-1:,-1], mass, t)
+                # reward = reward_function(orbit.y[:2,-1], pos, orbit.y[-1:,-1], mass, t)
                 rewards[j] = torch.tensor(reward, dtype=torch.float32, device=device)
                 values[j] = value
                 if orbit.status == 1: 
