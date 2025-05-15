@@ -146,8 +146,10 @@ def reward_function(pos, prev_pos, mass, prev_mass, t):
         consistent_reward = (start_planet_distance - np.linalg.norm(planet_position - pos, axis=-1)) / start_planet_distance + (mass - prev_mass) / args.rocket_mass
         completion_reward = np.linalg.norm(pos - planet_position, axis=-1) < destination_planet_radius
     elif args.destination_type == 'destination':
-        consistent_reward = (start_destination_distance - np.linalg.norm(destination_coords - pos, axis=-1)) / start_destination_distance + (mass - prev_mass) / args.rocket_mass
-        completion_reward = np.linalg.norm(pos - destination_coords, axis=-1) < destination_radius
+        current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
+        prev_distance = np.linalg.norm(destination_coords - prev_pos, axis=-1)
+        consistent_reward = (current_distance - prev_distance) / start_destination_distance + (mass - prev_mass) / args.rocket_mass
+        completion_reward = current_distance < destination_radius
     return consistent_reward + completion_reward
 
 def done_function(pos, t):
@@ -281,7 +283,7 @@ if __name__ == '__main__':
         if args.destination_params == None:
             destination_distance = -0.01 * earth_orbit_radius # L1 point from earth center in m
             destination_theta = np.pi # in rad
-            destination_radius = 1e5 # earth radius in m
+            destination_radius = 2e7 # earth radius in m
         else:
             destination_distance = args.destination_params[0]
             destination_theta = args.destination_params[1]
@@ -290,12 +292,14 @@ if __name__ == '__main__':
         start_destination_distance = np.linalg.norm(init_params[:2] - destination_coords)
 
     with tqdm(range(int(args.total_timesteps)), desc=f'episodic_reward: {episodic_reward}') as progress:
+        best_reward = -np.inf
+        best_orbit = None
+        best_thrusts = None
         for i in range(int(args.total_timesteps)):
             prev_logprob = None
             done = False
             y0 = init_params
             t = 0
-
             observations = torch.zeros((args.num_steps,)+env.observation_space.shape, dtype=torch.float32).to(device)
             actions = torch.zeros((args.num_steps,)+env.action_space.shape, dtype=torch.float32).to(device)
             logprobs = torch.zeros((args.num_steps,)+env.action_space.shape, dtype=torch.float32).to(device)
@@ -303,6 +307,8 @@ if __name__ == '__main__':
             dones = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             values = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             clip_fracs = []
+            positions = [y0[:2]]
+            thrusts = []
             for j in range(args.num_steps):
                 pos, vel, mass = y0[:2], y0[2:4], y0[-1:]
                 a_gravity = env.get_acceleration(np.concat([pos, np.array([t])]))
@@ -327,6 +333,8 @@ if __name__ == '__main__':
                 else:
                     y0 = orbit.y[:,-1]
                 t = t + args.delta_t
+                positions.append(y0[:2])
+                thrusts.append(thrust.numpy())
                 reward = reward_function(y0[:2], pos, y0[-1], mass, t)
                 observations[j] = state
                 actions[j] = action
@@ -361,6 +369,12 @@ if __name__ == '__main__':
             adam_critic.zero_grad()
             critic_loss.backward()
 
+            episodic_reward = rewards.sum(dim=0).max().cpu().numpy()
+            if episodic_reward > best_reward:
+                best_reward = episodic_reward
+                best_orbit = np.array(positions)
+                best_thrusts = np.array(thrusts)
+
             if args.log_train:
                 writer.add_scalar("loss/actor_loss", actor_loss.detach(), global_step=i)
                 writer.add_histogram("gradients/actor",
@@ -376,6 +390,7 @@ if __name__ == '__main__':
                 writer.add_scalar('charts/SPS', int(i/ (time.time() - start_time)), i)
             adam_critic.step()
 
-            episodic_reward = rewards.sum(dim=0).max().cpu().numpy()
             progress.set_description(f'episodic_reward: {episodic_reward}')
             progress.update()
+    np.save(f'Dynamics/runs/{args.exp_name}_best_orbit', best_orbit)
+    np.save(f'Dynamics/runs/{args.exp_name}_best_thrusts', best_thrusts)

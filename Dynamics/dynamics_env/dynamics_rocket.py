@@ -9,7 +9,7 @@ from torch import log10 as ln
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
-        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]) # pos x, y, vel x, y, acc x, y, m
+        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]) # pos x, y, vel x, y, acc x, y, m, (pos x,y, vel x,y) x planets, distance_to_dest x,y
         self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0])
         self.action_bounds = np.array([self.max_engine_thrust, self.max_engine_thrust]) # thrust~mdot*ve x, y, on/off
         self.action_space = gym.spaces.Box(
@@ -53,7 +53,8 @@ class Dynamics(gym.Env):
         return {}
     
     def _process_actions(self, action):
-        return np.clip(action * self.action_bounds, -self.action_bounds, self.action_bounds)
+        unit_action = action / np.linalg.norm(action)
+        return unit_action * self.action_bounds
     
     def _normalise_state(self, state):
         return state / self.high
