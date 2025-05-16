@@ -6,11 +6,21 @@ except:
     import planetary_models
 from torch import log10 as ln
 
+EARTH_MASS_IN_SI = 5.972e24
+
 class Dynamics(gym.Env):
     def __init__(self, hyperparameters):
         self._init_hyperparameters(hyperparameters)
-        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]) # pos x, y, vel x, y, acc x, y, m, (pos x,y, vel x,y) x planets, distance_to_dest x,y
-        self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0])
+        self.planetary_models = []
+        for model_name, model_kwargs_dict in zip(self.planetary_model_list, self.planetary_model_kwargs_list):
+            self.planetary_models.append(planetary_models.add_planetary_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
+        planet_info_scale_high = [np.array([self.box_scale, self.box_scale, 1e8, 1e8, EARTH_MASS_IN_SI]) for _ in range(len(self.planetary_models))]
+        planet_info_scale_high = [item for sublist in planet_info_scale_high for item in sublist]
+        planet_info_scale_low = [np.array([self.box_scale, self.box_scale, 1e8, 1e8, 0]) for _ in range(len(self.planetary_models))]
+        planet_info_scale_low = [item for sublist in planet_info_scale_low for item in sublist]
+        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]+planet_info_scale_high+[self.box_scale]) # pos x, y, vel x, y, acc x, y, m, (pos x,y, vel x,y, mass) x planets, distance_to_dest x,y
+        self.mass_position_in_state = [7,4]
+        self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0]+planet_info_scale_low+[self.box_scale])
         self.action_bounds = np.array([self.max_engine_thrust, self.max_engine_thrust]) # thrust~mdot*ve x, y, on/off
         self.action_space = gym.spaces.Box(
             low=-self.action_bounds,
@@ -22,9 +32,6 @@ class Dynamics(gym.Env):
             high=self.high, 
             dtype=np.float64
         )
-        self.planetary_models = []
-        for model_name, model_kwargs_dict in zip(self.planetary_model_list, self.planetary_model_kwargs_list):
-            self.planetary_models.append(planetary_models.add_planetary_model(model_name, **{'%s'%key:value for key,value in model_kwargs_dict.items()}))
 
     def render(self, mode='human'):
         return
@@ -57,7 +64,11 @@ class Dynamics(gym.Env):
         return unit_action * self.action_bounds
     
     def _normalise_state(self, state):
-        return state / self.high
+        planet_mass_mask = [True if (i-self.mass_position_in_state[0])%self.mass_position_in_state[1]==0 and i-self.mass_position_in_state[0]>0 else False for i in range(len(self.high))]
+        state = state / self.high
+        log_state = np.log10(state)
+        state[planet_mass_mask] = log_state[planet_mass_mask]
+        return state
     
     def _denormalise_state(self, state):
         return state * self.high

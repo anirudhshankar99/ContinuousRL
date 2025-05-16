@@ -148,7 +148,7 @@ def reward_function(pos, prev_pos, mass, prev_mass, t):
     elif args.destination_type == 'destination':
         current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
         prev_distance = np.linalg.norm(destination_coords - prev_pos, axis=-1)
-        consistent_reward = (current_distance - prev_distance) / start_destination_distance + (mass - prev_mass) / args.rocket_mass
+        consistent_reward = (prev_distance - current_distance) / start_destination_distance + (mass - prev_mass) / args.rocket_mass
         completion_reward = current_distance < destination_radius
     return consistent_reward + completion_reward
 
@@ -163,6 +163,19 @@ def done_function(pos, t):
     elif args.destination_type == 'destination':
         completion_reward = np.linalg.norm(pos - destination_coords) < destination_radius
     return completion_reward
+
+def distance_to_dest_function(pos, t):
+    if args.destination_type == 'radius':
+        earth_position = env.planetary_models[-1].get_position(t)
+        current_radius = np.linalg.norm(pos - earth_position, axis=-1)
+        distance_to_dest = destination_radius - current_radius
+    elif args.destination_type == 'destination_planet':
+        planet_position = env.planetary_models[destination_planet_index].get_position(t)
+        distance_to_dest = start_planet_distance - np.linalg.norm(planet_position - pos, axis=-1)
+    elif args.destination_type == 'destination':
+        current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
+        distance_to_dest = start_destination_distance - current_distance
+    return distance_to_dest
 
 def event_dest_reached(t, y, thrust):
     pos = y[:2]
@@ -259,7 +272,7 @@ if __name__ == '__main__':
         launch_theta = np.pi / 2 # np.random.rand() * 2 * np.pi * 0
         earth_phase, earth_orbit_radius = env.planetary_models[-1].phase, env.planetary_models[-1].orbit_radius
         launch_position = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_distance + np.array([np.cos(earth_phase), np.sin(earth_phase)]) * earth_orbit_radius
-        launch_velocity = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_speed + env.planetary_models[-1].get_velocity(0, earth_orbital_speed)
+        launch_velocity = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_speed + env.planetary_models[-1].get_velocity(0)
         launch_mass = np.array([args.rocket_mass])
         init_params = np.concat([launch_position, launch_velocity, launch_mass])
     else: init_params = np.array(args.start)
@@ -312,7 +325,15 @@ if __name__ == '__main__':
             for j in range(args.num_steps):
                 pos, vel, mass = y0[:2], y0[2:4], y0[-1:]
                 a_gravity = env.get_acceleration(np.concat([pos, np.array([t])]))
-                state = env._normalise_state(torch.tensor(np.concat([pos, vel, a_gravity, mass]), dtype=torch.float32, device=device)).float()
+                planet_info = []
+                for planet_model in env.planetary_models:
+                    planet_pos = planet_model.get_position(t)
+                    planet_vel = planet_model.get_velocity(t)
+                    planet_mass = np.array([planet_model.M])
+                    planet_info.append(np.concat([planet_pos, planet_vel, planet_mass]))
+                planet_info = np.concat(planet_info)
+                distance_to_dest = np.array([distance_to_dest_function(pos, t)])
+                state = torch.tensor(env._normalise_state(np.concat([pos, vel, a_gravity, mass, planet_info, distance_to_dest])), dtype=torch.float32, device=device)
                 with torch.no_grad():
                     action_means, action_stds = actor(state)
                 value = critic(state).flatten()
