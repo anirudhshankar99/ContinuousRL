@@ -112,7 +112,7 @@ def parse_args():
                         help='radius at which rocket is deemed captured by a planet')
     args = parser.parse_args()
     args.dry_mass = args.rocket_mass * (1 - args.fuel_frac)
-    destination_types = ['radius', 'destination', 'destination_planet']
+    destination_types = ['radius', 'destination', 'planet']
     args.num_steps = int(args.orbit_timesteps)
     args.delta_t = args.orbit_duration / args.orbit_timesteps
     assert args.destination_type in destination_types
@@ -141,9 +141,11 @@ def reward_function(pos, prev_pos, mass, prev_mass, t):
         prev_radius = np.linalg.norm(prev_pos - earth_position, axis=-1)
         consistent_reward = (current_radius - prev_radius) / (destination_radius - start_radius) + (mass - prev_mass) / args.rocket_mass
         completion_reward = current_radius >= destination_radius
-    elif args.destination_type == 'destination_planet':
+    elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
-        consistent_reward = (start_planet_distance - np.linalg.norm(planet_position - pos, axis=-1)) / start_planet_distance + (mass - prev_mass) / args.rocket_mass
+        current_distance_to_planet = np.linalg.norm(planet_position - pos, axis=-1)
+        prev_distance_to_planet = np.linalg.norm(planet_position - prev_pos, axis=-1)
+        consistent_reward = (current_distance_to_planet - prev_distance_to_planet) / start_planet_distance + (mass - prev_mass) / args.rocket_mass
         completion_reward = np.linalg.norm(pos - planet_position, axis=-1) < destination_planet_radius
     elif args.destination_type == 'destination':
         current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
@@ -157,7 +159,7 @@ def done_function(pos, t):
         earth_position = env.planetary_models[-1].get_position(t)
         current_radius = np.linalg.norm(pos - earth_position)
         completion_reward = current_radius >= destination_radius
-    elif args.destination_type == 'destination_planet':
+    elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
         completion_reward = np.linalg.norm(pos - planet_position) < destination_planet_radius
     elif args.destination_type == 'destination':
@@ -169,7 +171,7 @@ def distance_to_dest_function(pos, t):
         earth_position = env.planetary_models[-1].get_position(t)
         current_radius = np.linalg.norm(pos - earth_position, axis=-1)
         distance_to_dest = destination_radius - current_radius
-    elif args.destination_type == 'destination_planet':
+    elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
         distance_to_dest = start_planet_distance - np.linalg.norm(planet_position - pos, axis=-1)
     elif args.destination_type == 'destination':
@@ -183,7 +185,7 @@ def event_dest_reached(t, y, thrust):
         earth_position = env.planetary_models[-1].get_position(t)
         current_radius = np.linalg.norm(pos - earth_position)
         completion = 0 if current_radius >= destination_radius else 1
-    elif args.destination_type == 'destination_planet':
+    elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
         completion = 0 if np.linalg.norm(pos - planet_position) < destination_planet_radius else 1
     elif args.destination_type == 'destination':
@@ -237,10 +239,14 @@ if __name__ == '__main__':
     def make_env(seed):
         def thunk():
             env = Dynamics(hyperparameters={
-                'planetary_model_list':['point_source', 'point_source', 'point_source'],
+                'planetary_model_list':['point_source', 'planet', 'planet', 'planet'],
                 'planetary_model_kwargs_list':[{'M':2e30, 'period':1e10, 'orbit_radius':0, 'phase':0}, # sun
-                                                {'M':1.898e27, 'period':11.86, 'orbit_radius':7.7866e11, 'phase':0.785}, # jupiter
-                                                {'M':5.972e24, 'period':1, 'orbit_radius':1.496e11, 'phase':3.945}], # earth
+                                                {'planet_name':'jupiter'}, # jupiter
+                                                {'planet_name':'mars'}, # mars
+                                                {'planet_name':'earth'}], # earth
+                # 'planetary_model_kwargs_list':[{'M':2e30, 'period':1e10, 'orbit_radius':0, 'phase':0}, # sun
+                #                                 {'M':1.898e27, 'period':11.86, 'orbit_radius':7.7866e11, 'phase':0.785}, # jupiter
+                #                                 {'M':5.972e24, 'period':1, 'orbit_radius':1.496e11, 'phase':3.945}], # earth
                 'seed':seed,
                 'max_engine_thrust':args.max_engine_thrust,
             })
@@ -270,8 +276,8 @@ if __name__ == '__main__':
         leo_speed = 7.7e3 # 7.7e3 m/s
         earth_orbital_speed = 2.977e4 # m/s
         launch_theta = np.pi / 2 # np.random.rand() * 2 * np.pi * 0
-        earth_phase, earth_orbit_radius = env.planetary_models[-1].phase, env.planetary_models[-1].orbit_radius
-        launch_position = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_distance + np.array([np.cos(earth_phase), np.sin(earth_phase)]) * earth_orbit_radius
+        earth_pos = env.planetary_models[-1].get_position(0)
+        launch_position = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_distance + earth_pos
         launch_velocity = np.array([np.cos(launch_theta), np.sin(launch_theta)]) * leo_speed + env.planetary_models[-1].get_velocity(0)
         launch_mass = np.array([args.rocket_mass])
         init_params = np.concat([launch_position, launch_velocity, launch_mass])
@@ -284,24 +290,23 @@ if __name__ == '__main__':
         else:
             destination_radius = args.destination_params[0]
             start_radius = args.destination_params[1]
-    elif args.destination_type == 'destination_planet':
+    elif args.destination_type == 'planet':
         if args.destination_params == None:
-            destination_planet_index = len(env.planetary_models)-1
-            destination_planet_radius = 6051.8e3 # m (venus)
+            destination_planet_index = len(env.planetary_models)-2
+            destination_planet_radius = 3396e3 # m (mars)
+            # destination_planet_radius = 6051.8e3 # m (venus)
         else:
             destination_planet_index = args.destination_params[0]
             destination_planet_radius = args.destination_params[1]
-        start_planet_distance = np.linalg.norm(init_params[:2] - env.planetary_models[destination_planet_index].get_position())
+        start_planet_distance = np.linalg.norm(init_params[:2] - env.planetary_models[destination_planet_index].get_position(0))
     elif args.destination_type == 'destination':
         if args.destination_params == None:
-            destination_distance = -0.01 * earth_orbit_radius # L1 point from earth center in m
-            destination_theta = np.pi # in rad
+            earth_pos = env.planetary_models[-1].get_position(0)
+            destination_coords = earth_pos * 0.99 # L1 point from earth center in m
             destination_radius = 2e7 # earth radius in m
         else:
-            destination_distance = args.destination_params[0]
-            destination_theta = args.destination_params[1]
+            destination_coords = np.array([args.destination_params[0], args.destination_params[1]])
             destination_radius = args.destination_params[2]
-        destination_coords = np.array([np.cos(destination_theta), np.sin(destination_theta)]) * destination_distance + np.array([np.cos(earth_phase), np.sin(earth_phase)]) * earth_orbit_radius
         start_destination_distance = np.linalg.norm(init_params[:2] - destination_coords)
 
     with tqdm(range(int(args.total_timesteps)), desc=f'episodic_reward: {episodic_reward}') as progress:
