@@ -19,9 +19,9 @@ class Dynamics(gym.Env):
         planet_info_scale_high = [item for sublist in planet_info_scale_high for item in sublist]
         planet_info_scale_low = [np.array([self.box_scale, self.box_scale, 1e8, 1e8, 0]) for _ in range(len(self.planetary_models))]
         planet_info_scale_low = [item for sublist in planet_info_scale_low for item in sublist]
-        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]+planet_info_scale_high+[self.box_scale]) # pos x, y, vel x, y, acc x, y, m, (pos x,y, vel x,y, mass) x planets, distance_to_dest x,y
+        self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]+planet_info_scale_high+[self.box_scale, self.box_scale]) # pos x, y, vel x, y, acc x, y, m, (pos x,y, vel x,y, mass) x planets, distance_to_dest x,y
         self.mass_position_in_state = [7,4]
-        self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0]+planet_info_scale_low+[self.box_scale])
+        self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0]+planet_info_scale_low+[-self.box_scale, -self.box_scale])
         self.action_bounds = np.array([self.max_engine_thrust, self.max_engine_thrust]) # thrust~mdot*ve x, y, on/off
         self.action_space = gym.spaces.Box(
             low=-self.action_bounds,

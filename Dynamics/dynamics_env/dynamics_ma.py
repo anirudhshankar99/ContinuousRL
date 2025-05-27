@@ -45,11 +45,23 @@ class Dynamics(gym.Env):
             return self._get_ma(self.init_params), {agent:0 for agent in range(self.num_agents)}, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta}
         agent_rewards = {}
         for agent in range(self.num_agents):
-            orbit_dists = np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6] - orbit_delta.y[agent * 6: (agent+1) * 6], axis=0)
+            agent_positions = orbit.y[agent * 6: agent * 6 + 3] # (3, orbit_len)
+            agent_contained_orbit_mask = np.any(agent_positions > self.high[0], axis=0) # (1, orbit_len)
+            agent_contained_orbit_indices = np.arange(agent_contained_orbit_mask.shape[-1]) * agent_contained_orbit_mask # (1, orbit_len)
+            agent_contained_orbit_final_index = np.max(agent_contained_orbit_indices)
+            agent_delta_positions = orbit_delta.y[agent * 6: agent * 6 + 3] # (3, orbit_len)
+            agent_delta_contained_orbit_mask = np.any(agent_delta_positions > self.high[0], axis=0) # (1, orbit_len)
+            agent_delta_contained_orbit_indices = np.arange(agent_delta_contained_orbit_mask.shape[-1]) * agent_delta_contained_orbit_mask # (1, orbit_len)
+            agent_delta_contained_orbit_final_index = np.max(agent_delta_contained_orbit_indices)
+            if agent_delta_contained_orbit_final_index < 25:
+                agent_rewards[agent] = 0
+                continue
+            agent_min_contained_index = min(agent_contained_orbit_final_index, agent_delta_contained_orbit_final_index)
+            orbit_dists = np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6, :agent_min_contained_index] - orbit_delta.y[agent * 6: (agent+1) * 6, :agent_min_contained_index], axis=0)
             log_orbit_dists = np.log(orbit_dists + 1e-8)
-            fit_coeffs = np.polyfit(orbit.t, log_orbit_dists, 1)
-            max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
-            agent_rewards[agent] = fit_coeffs[0] * self.out_of_bounds_damping(max_r)
+            fit_coeffs = np.polyfit(orbit.t[:agent_min_contained_index], log_orbit_dists, 1)
+            # max_r = np.max(np.linalg.norm(orbit.y[agent * 6: (agent+1) * 6][:3], axis=0))
+            agent_rewards[agent] = fit_coeffs[0] # * self.out_of_bounds_damping(max_r)
         return self._get_ma(self.init_params), agent_rewards, self._get_ma(False), self._get_ma(False), {'orbit':orbit, 'orbit_delta':orbit_delta}
 
     def reset(self, init_params=[]):

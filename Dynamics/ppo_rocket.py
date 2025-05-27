@@ -91,15 +91,15 @@ def parse_args():
                         help='the value of the lambda parameter for gae')
     parser.add_argument('--clip-coef', type=float, default=0.2,
                         help='the surrogate ratios\' clipping coefficient')
-    parser.add_argument('--v-e', type=float, default=3000e3,
+    parser.add_argument('--v-e', type=float, default=3000e3, # supposed to be 3000
                         help='exhaust velocity of the rocket in m/s')
     parser.add_argument('--fuel-frac', type=float, default=0.9,
                         help='fraction of the rocket\'s takeoff mass comprised of fuel')
-    parser.add_argument('--orbit-timesteps', type=int, default=250,
+    parser.add_argument('--orbit-timesteps', type=int, default=400,
                         help='number of timesteps over which the orbit is integrated')
-    parser.add_argument('--orbit-duration', type=float, default=5000,
+    parser.add_argument('--orbit-duration', type=float, default=125000,
                         help='orbit time in s')
-    parser.add_argument('--max-engine-thrust', type=float, default=7500e3, # supposed to be 7500e3
+    parser.add_argument('--max-engine-thrust', type=float, default=7500e3,
                         help='maximum possible engine thrust in N')
     parser.add_argument('--rocket-mass', type=float, default=433100)
     parser.add_argument('--destination-type', type=str, default='radius',
@@ -145,7 +145,7 @@ def reward_function(pos, prev_pos, mass, prev_mass, t):
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
         current_distance_to_planet = np.linalg.norm(planet_position - pos, axis=-1)
         prev_distance_to_planet = np.linalg.norm(planet_position - prev_pos, axis=-1)
-        consistent_reward = (current_distance_to_planet - prev_distance_to_planet) / start_planet_distance + (mass - prev_mass) / args.rocket_mass
+        consistent_reward = (prev_distance_to_planet - current_distance_to_planet) / start_planet_distance + (mass - prev_mass) / args.rocket_mass
         completion_reward = np.linalg.norm(pos - planet_position, axis=-1) < destination_planet_radius
     elif args.destination_type == 'destination':
         current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
@@ -166,18 +166,17 @@ def done_function(pos, t):
         completion_reward = np.linalg.norm(pos - destination_coords) < destination_radius
     return completion_reward
 
-def distance_to_dest_function(pos, t):
+def coordinates_to_dest_function(pos, t):
     if args.destination_type == 'radius':
         earth_position = env.planetary_models[-1].get_position(t)
         current_radius = np.linalg.norm(pos - earth_position, axis=-1)
-        distance_to_dest = destination_radius - current_radius
+        coordinates_to_dest = np.array([destination_radius - current_radius, destination_radius - current_radius])
     elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
-        distance_to_dest = start_planet_distance - np.linalg.norm(planet_position - pos, axis=-1)
+        coordinates_to_dest = pos - planet_position
     elif args.destination_type == 'destination':
-        current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
-        distance_to_dest = start_destination_distance - current_distance
-    return distance_to_dest
+        coordinates_to_dest = pos - destination_coords
+    return coordinates_to_dest
 
 def event_dest_reached(t, y, thrust):
     pos = y[:2]
@@ -337,8 +336,8 @@ if __name__ == '__main__':
                     planet_mass = np.array([planet_model.M])
                     planet_info.append(np.concat([planet_pos, planet_vel, planet_mass]))
                 planet_info = np.concat(planet_info)
-                distance_to_dest = np.array([distance_to_dest_function(pos, t)])
-                state = torch.tensor(env._normalise_state(np.concat([pos, vel, a_gravity, mass, planet_info, distance_to_dest])), dtype=torch.float32, device=device)
+                coordinates_to_dest = coordinates_to_dest_function(pos, t)
+                state = torch.tensor(env._normalise_state(np.concat([pos, vel, a_gravity, mass, planet_info, coordinates_to_dest])), dtype=torch.float32, device=device)
                 with torch.no_grad():
                     action_means, action_stds = actor(state)
                 value = critic(state).flatten()
@@ -346,7 +345,7 @@ if __name__ == '__main__':
                 action = dist.sample()
                 logprob = dist.log_prob(action)
                 thrust = env._process_actions(action) # in N (kg m/s^2)
-                orbit = solve_ivp(rocket_function, t_span=(t, t + args.delta_t), y0=y0, t_eval=[t + args.delta_t], events=[event_rocket_captured, event_dest_reached], args=(thrust.numpy(),))
+                orbit = solve_ivp(rocket_function, t_span=(t, t + args.delta_t), y0=y0, t_eval=[t + args.delta_t], events=[event_rocket_captured, event_dest_reached], args=(thrust.numpy(),), method='RK23')
                 if orbit.status == 1: 
                     if len(orbit.t_events[0]) != 0: 
                         termination_status = 1
