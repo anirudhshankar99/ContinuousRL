@@ -26,7 +26,7 @@ def planet(init_params):
     assert 'planet_name' in init_params, 'Planets must be supplied with "planet_name" argument'
     assert init_params['planet_name'] in list(PLANET_PHASES.keys()), 'Unknown planet, %s. Available planets: '%init_params['planet_name']+ " ".join(str(x) for x in list(PLANET_PHASES.keys()))
     planet_name = init_params['planet_name']
-    return PointSource(PLANET_MASSES[planet_name]*EARTH_MASS, PLANET_PERIODS[planet_name]*YR_TO_SEC, PLANET_PHASES[planet_name], PLANET_MEAN_ORBIT_RADII[planet_name]*AU_TO_M)
+    return PointSource(PLANET_MASSES[planet_name]*EARTH_MASS, PLANET_PERIODS[planet_name], PLANET_PHASES[planet_name], PLANET_MEAN_ORBIT_RADII[planet_name]*AU_TO_M)
 
 def tracer(init_params):
     assert 'phase' in init_params, "Initial phase must be supplied to initialize a point source"
