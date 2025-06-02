@@ -22,7 +22,7 @@ class Dynamics(gym.Env):
         self.high = np.array([self.box_scale, self.box_scale, 1e8, 1e8, 1e12, 1e12, self.rocket_mass]+planet_info_scale_high+[self.box_scale, self.box_scale]) # pos x, y, vel x, y, acc x, y, m, (pos x,y, vel x,y, mass) x planets, distance_to_dest x,y
         self.mass_position_in_state = [7,4]
         self.low = np.array([-self.box_scale, -self.box_scale, -1e8, -1e8, -1e12, -1e12, 0.0]+planet_info_scale_low+[-self.box_scale, -self.box_scale])
-        self.action_bounds = np.array([self.max_engine_thrust, self.max_engine_thrust]) # thrust~mdot*ve x, y, on/off
+        self.action_bounds = np.array([self.max_engine_thrust, self.max_engine_thrust, self.max_ion_thrust, self.max_ion_thrust]) # thrust~mdot*ve x, y
         self.action_space = gym.spaces.Box(
             low=-self.action_bounds,
             high=self.action_bounds,
@@ -51,6 +51,7 @@ class Dynamics(gym.Env):
         self.rocket_mass = 433100
         self.box_scale = 4.578e12 # in km
         self.max_engine_thrust = 7500e3 # in N
+        self.max_ion_thrust = 1
         self.fuel_frac = 0.9
         self.v_e = 3500 # in m/s
 
@@ -61,8 +62,11 @@ class Dynamics(gym.Env):
         return {}
     
     def _process_actions(self, action):
-        unit_action = action / np.linalg.norm(action)
-        return unit_action * self.action_bounds
+        action_1, action_2 = action[..., :2], action[..., 2:4]
+        clip_mask_g_1, clip_mask_g_2, clip_mask_l_1, clip_mask_l_2 = action_1 > 1, action_2 > 1, action_1 < -1, action_2 < -1
+        clipped_action_1, clipped_action_2 = clip_mask_g_1 * self.action_bounds[:2] - clip_mask_l_1 * self.action_bounds[:2] + ~(clip_mask_g_1 + clip_mask_l_1) * action_1 * self.action_bounds[:2], \
+                                             clip_mask_g_2 * self.action_bounds[2:4] - clip_mask_l_2 * self.action_bounds[2:4] + ~(clip_mask_g_2 + clip_mask_l_2) * action_2 * self.action_bounds[2:4]
+        return clipped_action_1, clipped_action_2
     
     def _normalise_state(self, state):
         # planet_mass_mask = [True if (i-self.mass_position_in_state[0])%self.mass_position_in_state[1]==0 and i-self.mass_position_in_state[0]>0 else False for i in range(len(self.high))]
