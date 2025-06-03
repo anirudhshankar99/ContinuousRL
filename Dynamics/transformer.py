@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-# Actor module
-class Actor(nn.Module):
+class Agent(nn.Module):
     def __init__(self, input_dim, output_dim, condition_dim, hidden_dim, n_heads, num_layers, seq_len):
         super().__init__()
         self.model = OrbitPredictorTransformer(
@@ -15,26 +14,11 @@ class Actor(nn.Module):
             num_layers=num_layers,
             seq_len=seq_len,
         )
-        self.out_shape = output_dim
+        self.out_shape = input_dim // 2
     def forward(self, states, accs, conditioning_token):
-        X = self.model(states, accs, conditioning_token)
+        X, value = self.model(states, accs, conditioning_token)
         (means, log_stds) = torch.split(X, [self.out_shape, self.out_shape], dim=-1)
-        return means, log_stds.exp()
-    
-# Critic module
-class Critic(nn.Module):
-    def __init__(self, env, activation=nn.Tanh):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(np.array(env.observation_space.shape).prod(), 64),
-            activation(),
-            nn.Linear(64, 32),
-            activation(),
-            nn.Linear(32, 1)
-        )
-    
-    def forward(self, X):
-        return self.model(X)
+        return means, log_stds.exp(), value.sum()
 
 class OrbitPredictorTransformer(nn.Module):
     def __init__(self, input_dim, output_dim, condition_dim, hidden_dim, n_heads, num_layers, seq_len):
@@ -51,18 +35,19 @@ class OrbitPredictorTransformer(nn.Module):
         self.positional_encoding = nn.Parameter(torch.randn(1, seq_len + 1, hidden_dim))  # +1 for conditioning token
 
         # Transformer
-        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, n_heads=n_heads, batch_first=True)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=n_heads, batch_first=True)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         # Prediction Head (predicts future state)
-        self.output_head = nn.Linear(hidden_dim, output_dim)
+        self.actor_head = nn.Linear(hidden_dim, output_dim)
+        self.critic_head = nn.Linear(hidden_dim, 1)
 
     def forward(self, states, accs, conditioning_token):
-        # states: (B, T, input_dim)
-        # accs:   (B, T, acc_dim)
-        # conditioning_token: (B, cond_dim)
+        # states: (T, input_dim)
+        # accs:   (T, acc_dim)
+        # conditioning_token: (cond_dim)
 
-        B, T, _ = states.shape
+        T, _ = states.shape
 
         # Embed input
         embedded_state = self.state_embedding(states)
@@ -70,10 +55,10 @@ class OrbitPredictorTransformer(nn.Module):
         embedded_tokens = embedded_state + embedded_acc
 
         # Conditioning token
-        conditioning_token = self.conditioning_embedding(conditioning_token).unsqueeze(1)  # (B, 1, hidden_dim)
+        conditioning_token = self.conditioning_embedding(conditioning_token).unsqueeze(0)  # (1, hidden_dim)
 
         # Concatenate conditioning_token + sequence
-        x = torch.cat([conditioning_token, embedded_tokens], dim=1)  # (B, T+1, hidden_dim)
+        x = torch.cat([conditioning_token, embedded_tokens], dim=0)  # (T+1, hidden_dim)
 
         # Add positional encoding
         x = x + self.positional_encoding[:, :T+1, :]
@@ -85,9 +70,9 @@ class OrbitPredictorTransformer(nn.Module):
         x = self.transformer(x, mask=attention_mask)
 
         # Discard conditioning token before prediction
-        x = x[:, 1:, :]  # (B, T, hidden_dim)
+        x = x[:, 1:, :]  # (T, hidden_dim)
 
         # Predict next states
-        predictions = self.output_head(x)  # (B, T, input_dim)
-
-        return predictions
+        predictions = self.actor_head(x)  # (T, input_dim)
+        value = self.critic_head(x)
+        return predictions.squeeze(0), value.squeeze(0)
