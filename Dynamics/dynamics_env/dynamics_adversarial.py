@@ -36,7 +36,9 @@ class Dynamics(gym.Env):
             dtype=np.float64
         )
 
-    def step(self, action):
+    def step(self, action=None):
+        if action == None:
+            action = (np.random.rand(*self.init_params.shape) - 1/2) * 2
         action = self._process_actions(action)
         init_params = np.clip(self.init_params + action, self.low_cat, self.high_cat)
         orbit = self._calculate_orbit(init_params)
@@ -91,15 +93,17 @@ class Dynamics(gym.Env):
                 vel[i][origin_capture] = np.zeros_like(vel[i][origin_capture])
                 pos[i][origin_capture] = T[origin_capture]
                 accs[i][origin_capture] = np.zeros_like(accs[i][origin_capture])
-                if np.any(origin_capture): break
-            accs[i][~origin_capture] = new_acc = np.array(ode_function(pos[i], t[i]))[~origin_capture]
-            vel[i][~origin_capture] = (v_half + 0.5 * delta_t * new_acc * self.km_to_pc)[~origin_capture]
-            acc = new_acc
+                if np.any(origin_capture): 
+                    print('[ENV] Origin capture at %.2f pc from center\nInit params- '%np.linalg.norm((T - galaxy_model.pos), axis=-1)[origin_capture], y0)
+                    break
             if np.all(origin_capture):
                 pos[i:] = pos[i]
                 vel[i:] = vel[i]
                 accs[i:] = accs[i]
                 break
+            accs[i][~origin_capture] = new_acc = np.array(ode_function(pos[i], t[i]))[~origin_capture]
+            vel[i][~origin_capture] = (v_half[~origin_capture] + 0.5 * delta_t * new_acc * self.km_to_pc)[~origin_capture]
+            acc = new_acc
         orbit_y = np.reshape(np.concat([pos, vel], axis=-1), (n_steps, -1)).transpose()
         accs = np.reshape(accs, (n_steps, -1)).transpose()
         return Orbit(orbit_y, np.linspace(t_span[0], t_span[1], n_steps), accs)

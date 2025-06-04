@@ -171,11 +171,6 @@ if __name__ == '__main__':
     env = make_env(seed=args.seed)()
     assert isinstance(env.action_space, gym.spaces.Box), "must be a continuous action space"
 
-    actor_proposer = Actor(env, activation=Mish).to(device)
-    critic_proposer = Critic(env, activation=Mish).to(device)
-    optim_actor_proposer = torch.optim.Adam(actor_proposer.parameters(), lr=3e-4)
-    optim_critic_proposer = torch.optim.Adam(critic_proposer.parameters(), lr=1e-3)
-
     agent_predictor = transformer.Agent(input_dim=6 * args.num_bodies,
                                         output_dim=2 * 3 * args.num_bodies,
                                         condition_dim=6,
@@ -201,34 +196,17 @@ if __name__ == '__main__':
             conditioning = info['model_type_list']
             state = torch.tensor(state, dtype=torch.float32, device=device)
 
-            observations_proposer = torch.zeros((args.num_steps,)+env.observation_space.shape, dtype=torch.float32).to(device)
             observations_predictor = Orbit(None, None, None)
-            actions_proposer = torch.zeros((args.num_steps,)+env.action_space.shape, dtype=torch.float32).to(device)
             actions_predictor = torch.zeros((args.num_steps, args.n_predictions, 3 * args.num_bodies), dtype=torch.float32).to(device)
-            logprobs_proposer = torch.zeros((args.num_steps,)+env.action_space.shape, dtype=torch.float32).to(device)
             logprobs_predictor = torch.zeros((args.num_steps, args.n_predictions, 3 * args.num_bodies), dtype=torch.float32).to(device)
-            rewards_proposer = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             rewards_predictor = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             dones = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
-            values_proposer = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
             values_predictor = torch.zeros((args.num_steps,), dtype=torch.float32).to(device)
-            clip_fracs_proposer = []
             clip_fracs_predictor = []
             j = 0
             while j < args.num_steps:
                 # gathering rollout data
-                with torch.no_grad():
-                    action_means, action_stds = actor_proposer(state)
-                value = critic_proposer(state)
-                dist = torch.distributions.Normal(action_means, action_stds)
-                action = dist.sample()
-                logprob = dist.log_prob(action)
-                
-                observations_proposer[j] = state
-                actions_proposer[j] = action
-                logprobs_proposer[j] = logprob
-                values_proposer[j] = value
-                orbit, _, done, _, info = env.step(action.numpy())
+                orbit, _, done, _, info = env.step()
                 predictor_timesteps = np.floor(np.linspace(0, args.orbit_duration-1, args.n_predictions + 1)).astype(int)
                 phase_coords = np.transpose(orbit.y[:, predictor_timesteps][:,:-1])
                 accs = np.transpose(orbit.a[:, predictor_timesteps][:,:-1])
@@ -245,34 +223,16 @@ if __name__ == '__main__':
                 logprobs_predictor[j] = predictor_logprob
                 values_predictor[j] = predictor_value
                 prediction_distance = nn.functional.mse_loss(predictor_action, torch.tensor(np.transpose(orbit.y[:3 * args.num_bodies, predictor_timesteps][:,1:]), dtype=torch.float32, device=device) / env.high[0]) / args.n_predictions
-                rewards_proposer[j] = prediction_distance
                 rewards_predictor[j] = -prediction_distance
                 j += 1
             
             # advantage calculation
-            advantages_proposer = torch.zeros_like(rewards_proposer).to(device)
             advantages_predictor = torch.zeros_like(rewards_predictor).to(device)
             lastgaelam = 0
             done_index = dones.nonzero().max().item() if dones.any() else args.num_steps
-            for t in reversed(range(done_index)):
-                advantages_proposer = lastgaelam = rewards_proposer + (1- dones) * args.gamma * values_proposer + args.gamma * args.gae_lambda * (1-dones) * lastgaelam
             lastgaelam = 0
             for t in reversed(range(done_index)):
                 advantages_predictor = lastgaelam = rewards_predictor + (1- dones) * args.gamma * values_predictor + args.gamma * args.gae_lambda * (1-dones) * lastgaelam
-            action_means, action_stds = actor_proposer(observations_proposer)
-            dist = torch.distributions.Normal(action_means, action_stds)
-            new_logprob_proposer = dist.log_prob(actions_proposer)
-            actor_proposer_loss, approx_kl_proposer, clipfracs = policy_loss(logprobs_proposer, new_logprob_proposer, advantages_proposer.detach(), args.clip_coef)
-            actor_proposer_loss = actor_proposer_loss.mean()
-            clip_fracs_proposer += clipfracs
-            optim_actor_proposer.zero_grad()
-            actor_proposer_loss.backward()
-            optim_actor_proposer.step()
-            critic_loss_proposer = advantages_proposer.pow(2).mean()
-            optim_critic_proposer.zero_grad()
-            critic_loss_proposer.backward()
-            optim_critic_proposer.step()
-
             orbit = observations_predictor
             predictor_timesteps = np.floor(np.linspace(0, args.orbit_duration, args.n_predictions + 1))
             predictor_means, predictor_stds, _ = agent_predictor(torch.tensor(phase_coords, dtype=torch.float32, device=device), 
@@ -290,19 +250,14 @@ if __name__ == '__main__':
             optim_agent_predictor.step()
 
             if args.log_train:
-                writer.add_scalar("loss/actor_loss_proposer", actor_proposer_loss.detach(), global_step=i)
                 writer.add_scalar("loss/actor_loss_predictor", actor_predictor_loss.detach(), global_step=i)
-                writer.add_scalar("reward/episode_reward_proposer", rewards_proposer.sum(dim=0).max().cpu().numpy(), global_step=i)
                 writer.add_scalar("reward/episode_reward_predictor", rewards_predictor.sum(dim=0).max().cpu().numpy(), global_step=i)
-                writer.add_scalar("loss/critic_loss_proposer", critic_loss_proposer.detach(), global_step=i)
                 writer.add_scalar("loss/critic_loss_predictor", critic_loss_predictor.detach(), global_step=i)
-                writer.add_scalar('charts/approx_kl_proposer', approx_kl_proposer.item(), global_step=i)
                 writer.add_scalar('charts/approx_kl_predictor', approx_kl_predictor.item(), global_step=i)
-                writer.add_scalar("charts/clipfrac_proposer", np.mean(clip_fracs_proposer), global_step=i)
                 writer.add_scalar("charts/clipfrac_predictor", np.mean(clip_fracs_predictor), global_step=i)
 
-            episodic_reward = rewards_proposer.sum(dim=0).max().cpu().item()
-            state_list.append([episodic_reward]+env._process_actions(actions_proposer[0]).tolist())
+            episodic_reward = rewards_predictor.sum(dim=0).max().cpu().item()
+            state_list.append([episodic_reward]+env._process_actions(orbit.y[:, 0]).tolist())
             progress.set_description(f'episodic_reward: {episodic_reward}')
             progress.update()
     state_list = np.array(state_list)
@@ -312,3 +267,4 @@ if __name__ == '__main__':
         columns += ['x', 'y', 'z', 'vx', 'vy', 'vz']
     save_df = pd.DataFrame(state_list[save_mask],columns=columns)
     save_df.to_csv(f'Dynamics/runs/{run_name}_best_performers.csv',index=False)
+    torch.save(agent_predictor.state_dict(), f'Dynamics/runs/{run_name}_pretrain_predictor.pth')
