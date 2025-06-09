@@ -33,6 +33,7 @@ class Dynamics(gym.Env):
             high=self.high, 
             dtype=np.float64
         )
+        self.G_IN_SI = 6.674e-11
 
     def render(self, mode='human'):
         return

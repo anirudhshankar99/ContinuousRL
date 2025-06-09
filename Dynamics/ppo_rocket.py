@@ -112,6 +112,8 @@ def parse_args():
                         help='parameters of the chosen destination type')
     parser.add_argument('--capture-radius', type=float, default = 6371e2,
                         help='radius at which rocket is deemed captured by a planet')
+    parser.add_argument('--completion-reward-weight', type=float, default=10.,
+                        help='coefficient that scales final rewards compared to the initial rewards')
     args = parser.parse_args()
     args.dry_mass = args.rocket_mass * (1 - args.fuel_frac)
     destination_types = ['radius', 'destination', 'planet']
@@ -143,26 +145,30 @@ def episode_reward_function(pos, prev_pos, t, prev_t):
         current_radius = np.linalg.norm(pos - earth_position, axis=-1)
         prev_radius = np.linalg.norm(prev_pos - earth_position, axis=-1)
         reward = (current_radius - prev_radius) / (destination_radius - start_radius)
+        hyperbolic_reward = 0
     elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
         prev_planet_position = env.planetary_models[destination_planet_index].get_position(prev_t)
         current_distance_to_planet = np.linalg.norm(planet_position - pos, axis=-1)
         prev_distance_to_planet = np.linalg.norm(prev_planet_position - prev_pos, axis=-1)
         reward = (prev_distance_to_planet - current_distance_to_planet) / start_planet_distance
+        hyperbolic_reward = hyperbolic_reward_numerator * (1 / prev_distance_to_planet - 1 / current_distance_to_planet)
     elif args.destination_type == 'destination':
         current_distance = np.linalg.norm(destination_coords - pos, axis=-1)
         prev_distance = np.linalg.norm(destination_coords - prev_pos, axis=-1)
         reward = (prev_distance - current_distance) / start_destination_distance
-    return reward
+        hyperbolic_reward = hyperbolic_reward_numerator * (1 / prev_distance - 1 / current_distance)
+    return reward, hyperbolic_reward
 
-def done_function(pos, t):
+def done_function(pos, vel, t):
     if args.destination_type == 'radius':
         earth_position = env.planetary_models[-1].get_position(t)
         current_radius = np.linalg.norm(pos - earth_position)
         completion_reward = current_radius >= destination_radius
     elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
-        completion_reward = np.linalg.norm(pos - planet_position) < destination_planet_radius
+        distance_to_planet = np.linalg.norm(pos - planet_position)
+        completion_reward = (distance_to_planet < destination_planet_radius * 1e3) and (np.linalg.norm(vel) <= np.sqrt(2 * env.G_IN_SI * env.planetary_models[destination_planet_index].M / distance_to_planet))
     elif args.destination_type == 'destination':
         completion_reward = np.linalg.norm(pos - destination_coords) < destination_radius
     return completion_reward
@@ -187,7 +193,8 @@ def event_dest_reached(t, y, chemical_thrust, ion_thrust):
         completion = 0 if current_radius >= destination_radius else 1
     elif args.destination_type == 'planet':
         planet_position = env.planetary_models[destination_planet_index].get_position(t)
-        completion = 0 if np.linalg.norm(pos - planet_position) < destination_planet_radius else 1
+        distance_to_planet = np.linalg.norm(pos - planet_position) 
+        completion = 0 if (distance_to_planet < destination_planet_radius * 1e2) else 1
     elif args.destination_type == 'destination':
         completion = 0 if np.linalg.norm(pos - destination_coords) < destination_radius else 1
     return completion
@@ -243,7 +250,7 @@ if __name__ == '__main__':
                 'planetary_model_list':['point_source', 'planet', 'planet', 'planet'],
                 'planetary_model_kwargs_list':[{'M':2e30, 'period':1e10, 'orbit_radius':0, 'phase':0}, # sun
                                                 {'planet_name':'jupiter'}, # jupiter
-                                                {'planet_name':'mars'}, # mars
+                                                {'planet_name':'venus'}, # mars
                                                 {'planet_name':'earth'}], # earth
                 # 'planetary_model_kwargs_list':[{'M':2e30, 'period':1e10, 'orbit_radius':0, 'phase':0}, # sun
                 #                                 {'M':1.898e27, 'period':11.86, 'orbit_radius':7.7866e11, 'phase':0.785}, # jupiter
@@ -296,11 +303,12 @@ if __name__ == '__main__':
         if args.destination_params == None:
             destination_planet_index = len(env.planetary_models)-2
             destination_planet_radius = 3396e3 # m (mars)
-            # destination_planet_radius = 6051.8e3 # m (venus)
+            destination_planet_radius = 6051.8e3 # m (venus)
         else:
             destination_planet_index = args.destination_params[0]
             destination_planet_radius = args.destination_params[1]
         start_planet_distance = np.linalg.norm(init_params[:2] - env.planetary_models[destination_planet_index].get_position(0))
+        hyperbolic_reward_numerator = start_planet_distance*destination_planet_radius / (destination_planet_radius - start_planet_distance)
     elif args.destination_type == 'destination':
         if args.destination_params == None:
             earth_pos = env.planetary_models[-1].get_position(0)
@@ -310,7 +318,7 @@ if __name__ == '__main__':
             destination_coords = np.array([args.destination_params[0], args.destination_params[1]])
             destination_radius = args.destination_params[2]
         start_destination_distance = np.linalg.norm(init_params[:2] - destination_coords)
-    destination_max_velocity = 11.2e3
+        hyperbolic_reward_numerator = start_destination_distance*destination_radius / (destination_radius - start_destination_distance)
 
     with tqdm(range(int(args.total_timesteps)), desc=f'episodic_reward: {episodic_reward}') as progress:
         best_reward = -np.inf
@@ -366,21 +374,28 @@ if __name__ == '__main__':
                 t = t + args.delta_t
                 positions.append(y0[:2])
                 thrusts.append([chemical_thrust.numpy(), ion_thrust.numpy()])
-                reward = episode_reward_function(y0[:2], pos, t, t - args.delta_t) * episode_reward_waning_factor
+                reward, hyperbolic_reward = episode_reward_function(y0[:2], pos, t, t - args.delta_t)
+                reward, hyperbolic_reward = reward * episode_reward_waning_factor, hyperbolic_reward * episode_reward_waning_factor
                 observations[j] = state
                 actions[j] = action
                 logprobs[j] = logprob
                 dones[j] = orbit.status
                 # reward = reward_function(orbit.y[:2,-1], pos, orbit.y[-1:,-1], mass, t)
-                rewards[j] = torch.tensor(reward, dtype=torch.float32, device=device)
+                rewards[j] = torch.tensor(reward + hyperbolic_reward, dtype=torch.float32, device=device)
                 values[j] = value
                 if orbit.status == 1:
                     break
             done_index = dones.nonzero().max().item() if dones.any() else args.num_steps
             completion_reward = y0[-1] / args.rocket_mass if orbit.status == 1 and termination_status == 2 else 0
-            completion_reward += (completion_reward > 0) * min(1, destination_max_velocity / np.linalg.norm(y0[2:4]))
-            episode_reward_waning_factor = episode_reward_waning_factor * 0.8 if completion_reward > 0 else episode_reward_waning_factor
-            final_reward = episode_reward_function(y0[:2], init_params[:2], t, 0)
+            if args.destination_type == 'planet':
+                distance_to_planet = np.linalg.norm(pos - env.planetary_models[destination_planet_index].get_position(t)) 
+                instant_escape_speed = np.sqrt(2 * env.G_IN_SI * env.planetary_models[destination_planet_index].M / distance_to_planet)
+                planet_velocity = env.planetary_models[destination_planet_index].get_velocity(t)
+                rocket_speed_from_planet_pov = np.linalg.norm(vel - planet_velocity)
+                completion_reward += (completion_reward > 0) * min(1, instant_escape_speed / rocket_speed_from_planet_pov) * args.completion_reward_weight
+            episode_reward_waning_factor = episode_reward_waning_factor * 0.9 if completion_reward > 0 else episode_reward_waning_factor
+            final_reward, final_hyperbolic_reward = episode_reward_function(y0[:2], init_params[:2], t, 0)
+            final_reward += final_hyperbolic_reward
             rewards[:done_index] += completion_reward / done_index
             rewards[:done_index] += final_reward / done_index
             # advantage calculation

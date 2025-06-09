@@ -36,8 +36,8 @@ class Dynamics(gym.Env):
             dtype=np.float64
         )
 
-    def step(self, action=None):
-        if action == None:
+    def step(self, action=[]):
+        if len(action) == 0:
             action = (np.random.rand(*self.init_params.shape) - 1/2) * 2
         action = self._process_actions(action)
         init_params = np.clip(self.init_params + action, self.low_cat, self.high_cat)
