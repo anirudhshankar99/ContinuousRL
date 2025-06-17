@@ -95,9 +95,9 @@ def parse_args():
                         help='exhaust velocity of the rocket in m/s')
     parser.add_argument('--fuel-frac', type=float, default=0.9,
                         help='fraction of the rocket\'s takeoff mass comprised of fuel')
-    parser.add_argument('--orbit-timesteps', type=int, default=400,
+    parser.add_argument('--orbit-timesteps', type=int, default=4000,
                         help='number of timesteps over which the orbit is integrated')
-    parser.add_argument('--orbit-duration', type=float, default=125000,
+    parser.add_argument('--orbit-duration', type=float, default=31536000,
                         help='orbit time in s')
     parser.add_argument('--max-engine-thrust', type=float, default=7500e3,
                         help='maximum possible engine thrust in N')
@@ -392,10 +392,11 @@ if __name__ == '__main__':
                 instant_escape_speed = np.sqrt(2 * env.G_IN_SI * env.planetary_models[destination_planet_index].M / distance_to_planet)
                 planet_velocity = env.planetary_models[destination_planet_index].get_velocity(t)
                 rocket_speed_from_planet_pov = np.linalg.norm(vel - planet_velocity)
-                completion_reward += (completion_reward > 0) * min(1, instant_escape_speed / rocket_speed_from_planet_pov) * args.completion_reward_weight
-            episode_reward_waning_factor = episode_reward_waning_factor * 0.9 if completion_reward > 0 else episode_reward_waning_factor
+                completion_reward += (completion_reward > 0) * (min(1, instant_escape_speed / rocket_speed_from_planet_pov) + args.completion_reward_weight)
             final_reward, final_hyperbolic_reward = episode_reward_function(y0[:2], init_params[:2], t, 0)
+            final_reward, final_hyperbolic_reward = (1 - episode_reward_waning_factor) * final_reward, (1 - episode_reward_waning_factor) * final_hyperbolic_reward
             final_reward += final_hyperbolic_reward
+            episode_reward_waning_factor = episode_reward_waning_factor * 0.9 if completion_reward > 0 else episode_reward_waning_factor
             rewards[:done_index] += completion_reward / done_index
             rewards[:done_index] += final_reward / done_index
             # advantage calculation
